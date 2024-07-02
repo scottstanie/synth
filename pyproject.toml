@@ -29,7 +29,7 @@ license = { file = "LICENSE.txt" }
 # see section: setuptools_scm
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata
 # dependencies will be read from text files
-dynamic = ["version", "dependencies", "optional-dependencies"]
+dynamic = ["version", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/isce-framework/synth"
@@ -40,9 +40,7 @@ Changelog = "https://github.com/isce-framework/synth/releases"
 # Entry points for the command line interface
 [project.scripts]
 synth = "synth.cli:main"
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
+synth-compare = "synth.analysis:main"
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
