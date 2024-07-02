@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 OUTPUT_PROFILE_DEFAULTS = {
     "driver": "GTiff",
     "dtype": "float32",
-    "nodata": 0.0,
+    "nodata": np.nan,
     "count": 1,
     "tiled": True,
     "compress": "lzw",
@@ -109,28 +109,37 @@ def compare_to_deformation(
 
         logger.debug("Loading full res data...")
         truth_phase = load_current_phase(truth_files, rows=full_rows, cols=full_cols)
+        # Form the single-reference interferograms from the truth phase
+        truth_phase_diff = truth_phase[1:] - truth_phase[[0]]
 
-        if len(unw_file_list) != (truth_phase.shape[0] - 1):
+        if len(unw_file_list) != (truth_phase_diff.shape[0]):
             raise ValueError(
                 f"{len(unw_file_list) = } should be {truth_phase.shape[0] = } - 1"
             )
+
         window = Window.from_slices(rows, cols)
-        # TODO: Need a spatial reference point to compare the unwrapped to truth
 
         for cur_truth, in_f, out_f, cc_f in zip(
-            truth_phase, unw_file_list, output_files, conncomp_file_list
+            truth_phase_diff, unw_file_list, output_files, conncomp_file_list
         ):
             with rio.open(in_f) as src:
                 cur_unw = src.read(1, window=window)
 
-            difference = cur_unw - cur_truth
+            # difference = cur_unw - cur_truth
+            # TODO: Currently, the "truth" has sign flipped, so must be added.
+            # The probable fix is in the phase generation in `covariance.py`, maybe
+            # `signal_cov = _get_diffs(defo_stack)`
+            difference = cur_unw + cur_truth
+
+            # TODO: Need a spatial reference point to compare the unwrapped to truth?
+            # For now, we just subtract the mean
+            difference -= difference.mean()
 
             if exclude_zero_conncomps:
                 with rio.open(cc_f) as src:
+                    # TODO: this should use the `src.nodatavals` or `masked=True`
                     mask = src.read(1, window=window) == 0
-            else:
-                mask = np.zeros(cur_unw.shape, dtype=bool)
-            difference[mask] = 0
+                difference[mask] = np.nan
 
             with rio.open(out_f, "r+") as dst:
                 dst.write(difference, indexes=1, window=window)

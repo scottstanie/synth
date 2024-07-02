@@ -8,9 +8,14 @@ from ._types import PathOrStr
 
 logger = logging.getLogger(__name__)
 
+ALL_LAYERS = slice(None)
+
 
 def load_current_phase(
-    files: Mapping[str, PathOrStr], rows: slice, cols: slice
+    files: Mapping[str, PathOrStr],
+    rows: slice,
+    cols: slice,
+    idx: slice | int = ALL_LAYERS,
 ) -> np.ndarray:
     """Load and sum the phase data from multiple HDF5 files for a row/column block.
 
@@ -22,6 +27,9 @@ def load_current_phase(
         Row slice to extract.
     cols : slice
         Column slice to extract.
+    idx : slice | int, optional
+        Single index or slice of the 3D cube to load.
+        Default is to load all depth layers.
 
     Returns
     -------
@@ -39,7 +47,7 @@ def load_current_phase(
             # Check if the dset is 3D
             if dset.ndim == 3:
                 # For 3D datasets, load the full depth
-                data = dset[:, rows, cols]
+                data = dset[idx, rows, cols]
             elif dset.ndim == 2:
                 # For 2D datasets, add a depth dimension of 1
                 data = dset[rows, cols][np.newaxis, :, :]
