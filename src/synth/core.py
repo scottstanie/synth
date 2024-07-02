@@ -73,15 +73,7 @@ def create_simulation_data(
     #     inps.bounding_box, outdir=outdir, upsample=(upsample_y, upsample_x)
     # )
     logger.info("Getting Rhos, Tau rasters")
-    # (amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask, profile) = (
-    # (
-    #     amp_file,
-    #     rho_file,
-    #     tau_file,
-    #     seasonal_A_file,
-    #     seasonal_B_file,
-    #     seasonal_mask_file,
-    # ) = global_coherence.get_coherence_model_coeffs(
+
     coherence_files = global_coherence.get_coherence_model_coeffs(
         bounds=inps.bounding_box,
         upsample=upsample,
@@ -91,22 +83,11 @@ def create_simulation_data(
         shape2d = src.shape
         profile = src.profile
 
-    # assert rhos.ndim == 2
-    # assert (
-    #     rhos.shape
-    #     == taus.shape
-    #     == seasonal_A.shape
-    #     == seasonal_B.shape
-    #     == seasonal_mask.shape
-    # )
-    # shape2d = rhos.shape[0], rhos.shape[1]
-
     shape3d = (inps.num_dates, shape2d[0], shape2d[1])
     logger.info(f"{profile=}")
     logger.info(f"{shape3d = }")
-    # propagation_phase = np.zeros(shape3d, dtype="float32")
+
     files = {}
-    # signal = np.zeros_like(shape2d, dtype="float32") # deformation only
     if inps.include_turbulence:
         logger.info("Generating turbulence")
         files["turbulence"] = layers_dir / "turbulence.h5"
@@ -117,10 +98,7 @@ def create_simulation_data(
             max_amplitude=inps.max_turbulence_amplitude,
             resolution=(inps.res_y, inps.res_x),
         )
-        # propagation_phase += turb_stack
-        # signal += turb_stack
-        # Save:
-        # prof = profile.copy()
+
     if inps.include_deformation:
         logger.info("Generating deformation")
         files["deformation"] = layers_dir / "deformation.h5"
@@ -130,7 +108,7 @@ def create_simulation_data(
             max_amplitude=inps.max_defo_amplitude,
             out_hdf5=files["deformation"],
         )
-        # propagation_phase += defo_stack
+
     if inps.include_ramps:
         logger.info("Generating ramps")
         files["phase_ramps"] = layers_dir / "phase_ramps.h5"
@@ -156,11 +134,7 @@ def create_simulation_data(
         )
     )
     key = random.key(seed)
-    # # If we want to write the SLCs to an HDF5 stack:
-    # with h5py.File("noisy_stack.h5", "w") as hf_out:
-    #     dset_out = hf_out.create_dataset(
-    #         "data", shape=shape3d, dtype="complex64", **HDF5_KWARGS
-    #     )
+
     logger.info("Creating coherence matrices for each pixel")
     for rows, cols in tqdm(b_iter):
         amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask = load_coherence_files(
@@ -181,12 +155,9 @@ def create_simulation_data(
         )
         propagation_phase = load_current_phase(files, rows, cols)
 
-        # logger.info(C_arrays.shape, propagation_phase.shape, amps[rows, cols].shape)
-        # noisy_stack = covariance.make_noisy_samples(
         noisy_stack = covariance.make_noisy_samples_jax(
             subkey, C=C_arrays, defo_stack=propagation_phase, amplitudes=amps
         )
-        # dset_out[:, rows, cols] = noisy_stack
 
         window = rasterio.windows.Window.from_slices(rows, cols)
         for filename, layer in zip(output_slc_filenames, noisy_stack):
@@ -359,17 +330,6 @@ def create_turbulence(
     with h5py.File(out_hdf5, "w") as hf:
         dset = hf.create_dataset("data", shape=shape3d, dtype="float32", **HDF5_KWARGS)
         for idx in tqdm(list(range(num_days))):
-            # Version with upsampling: not much faster...
-            # upsample_y = int(round(60 / res_y))
-            # upsample_x = int(round(60 / res_x))
-            # shape2d_down = (shape2d[0] // upsample_y, shape2d[1] // upsample_x)
-            # turb_meters = turbulence.simulate(
-            #     shape=shape2d_down, resolution=60, max_amp=max_amp_meters
-            # )
-            # # Get the final raster by upsampling the smaller turbulence
-            # turb_rad = _interpolate_data(turb_meters * METERS_TO_PHASE, shape=shape2d)
-            # dset.write_direct(turb_rad, dest_sel=idx)
-
             turb_meters = turbulence.simulate(
                 shape=shape2d, resolution=res_y, max_amp=max_amp_meters
             )
@@ -453,24 +413,3 @@ def _setup_logging():
         )
         h.setFormatter(formatter)
         logger.addHandler(h)
-
-
-def _interpolate_data(
-    data: np.ndarray, shape: tuple[int, int], method="linear"
-) -> np.ndarray:
-    from scipy.interpolate import RegularGridInterpolator
-
-    # Create coordinate arrays for the original data
-    orig_coords = [np.linspace(0, 1, s) for s in data.shape]
-
-    # Create coordinate arrays for the desired output shape
-    new_coords = [np.linspace(0, 1, s) for s in shape]
-
-    # Create the interpolator
-    interp = RegularGridInterpolator(orig_coords, data, method=method)
-
-    # Create a mesh grid for the new coordinates
-    mesh = np.meshgrid(*new_coords, indexing="xy")
-
-    # Perform the interpolation
-    return interp(np.array(mesh).T.astype("float32"))
