@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import h5py
@@ -8,13 +8,13 @@ import rasterio
 import rasterio as rio
 import rasterio.windows
 from jax import random
-from pydantic import BaseModel, Field
 from tqdm.auto import tqdm
 from troposim import turbulence
 
 from . import covariance, deformation, global_coherence
 from ._blocks import iter_blocks
 from ._types import Bbox, PathOrStr
+from .config import SimulationInputs
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
@@ -23,27 +23,6 @@ HDF5_KWARGS: dict[str, tuple | str] = {}
 BLOCK_SHAPE = (256, 256)
 
 logger = logging.getLogger("synth")
-
-
-class SimulationInputs(BaseModel):
-    """Parameters describing simultaion data to generate."""
-
-    output_dir: Path = Path()
-    start_date: datetime
-    dt: int = Field(..., ge=1, le=365, description="Time step [days]")
-    num_dates: int = Field(..., ge=2, le=100)
-    res_y: float = Field(..., ge=1, le=1000, description="Y resolution [meters]")
-    res_x: float = Field(..., ge=1, le=1000, description="X resolution [meters]")
-    bounding_box: Bbox = Field(
-        ..., description="(left, bottom, right, top) in EPSG:4326"
-    )
-    include_turbulence: bool = True
-    max_turbulence_amplitude: float = 5
-    include_deformation: bool = True
-    max_defo_amplitude: float = 5
-    include_ramps: bool = True
-    max_ramp_amplitude: float = 1.0
-    include_stratified: bool = False
 
 
 def create_simulation_data(
