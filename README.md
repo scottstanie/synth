@@ -22,3 +22,7 @@
 [rtd-link]:                 https://synth.readthedocs.io/en/latest/?badge=latest
 
 <!-- prettier-ignore-end -->
+
+![](docs/ui-screenshot.png)
+
+![](docs/screenshot-noisy-phase.png)

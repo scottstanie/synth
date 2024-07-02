@@ -10,17 +10,17 @@ from ._types import Bbox
 class SimulationInputs(BaseSettings):
     """Create parameters describing simulation data to generate."""
 
-    model_config = SettingsConfigDict(cli_parse_args=True)
+    model_config = SettingsConfigDict(cli_parse_args=True, cli_prog_name="synth")
 
     output_dir: Path = Path()
-    start_date: datetime
-    dt: int = Field(..., ge=1, le=365, description="Time step [days]")
-    num_dates: int = Field(..., ge=2, le=100)
-    res_y: float = Field(..., ge=1, le=1000, description="Y resolution [meters]")
-    res_x: float = Field(..., ge=1, le=1000, description="X resolution [meters]")
     bounding_box: Bbox = Field(
         ..., description="(left, bottom, right, top) in EPSG:4326"
     )
+    start_date: datetime = datetime(2020, 1, 1)
+    dt: int = Field(12, ge=1, le=365, description="Time step [days]")
+    num_dates: int = Field(20, ge=2, le=100)
+    res_y: float = Field(15, ge=1, le=1000, description="Y resolution [meters]")
+    res_x: float = Field(15, ge=1, le=1000, description="X resolution [meters]")
     include_turbulence: bool = True
     max_turbulence_amplitude: float = 5
     include_deformation: bool = True

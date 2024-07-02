@@ -8,5 +8,8 @@ synth: Synthetic data generator for InSAR time series analysis
 from __future__ import annotations
 
 from synth._version import version as __version__
+from ._blocks import *
+from ._types import *
+from .config import *
 
 __all__ = ["__version__"]
