@@ -12,24 +12,22 @@ from pydantic import BaseModel, Field
 from tqdm.auto import tqdm
 from troposim import turbulence
 
-
+from . import covariance, deformation, global_coherence
 from ._blocks import iter_blocks
 from ._types import Bbox, PathOrStr
-from . import covariance, global_coherence
-from . import deformation
-
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
-SEASONS = []
 # HDF5_KWARGS = {"chunks": (4, 128, 128), "compression": "lzf"}
-HDF5_KWARGS = {}
+HDF5_KWARGS: dict[str, tuple | str] = {}
 BLOCK_SHAPE = (256, 256)
 
 logger = logging.getLogger("synth")
 
 
 class SimulationInputs(BaseModel):
+    """Parameters describing simultaion data to generate."""
+
     output_dir: Path = Path()
     start_date: datetime
     dt: int = Field(..., ge=1, le=365, description="Time step [days]")
@@ -221,7 +219,7 @@ def create_simulation_data(
 
 def load_coherence_files(
     coherence_files: list[Path], rows: slice, cols: slice
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Load the coherence rasters for a block of pixels.
 
     Parameters
@@ -239,7 +237,7 @@ def load_coherence_files(
     out_arrays = []
     for f in coherence_files:
         with rio.open(f) as src:
-            data = src.read(
+            data: np.ndarray = src.read(
                 1, window=rasterio.windows.Window.from_slices(rows, cols), masked=True
             )
             if data.dtype == np.uint8:
@@ -247,8 +245,7 @@ def load_coherence_files(
             else:
                 data = data.filled()
             out_arrays.append(data)
-    return out_arrays
-    # return rhos, taus, seasonal_A, seasonal_B, seasonal_mask
+    return tuple(out_arrays)
 
 
 def load_current_phase(files: dict[str, Path], rows: slice, cols: slice) -> np.ndarray:
@@ -325,7 +322,6 @@ def create_ramps(
         The ramp data is saved to the specified HDF5 file.
 
     """
-
     shape3d = (num_days, *shape2d)
     rotations = np.random.randint(0, 360, size=(num_days,))
     if Path(out_hdf5).exists() and not overwrite:
@@ -341,42 +337,6 @@ def create_ramps(
             dset.write_direct(ramp_phase, dest_sel=idx)
 
 
-def create_stratified(dem, num_days, out_hdf5: PathOrStr, overwrite: bool = False):
-    """Create a stack of stratified atmospheric noise for a given DEM.
-
-    Parameters
-    ----------
-    dem : np.ndarray
-        The digital elevation model (DEM) to use for generating the stratified phase.
-    num_days : int
-        The number of days to generate stratified phase data for.
-    out_hdf5 : PathOrStr
-        The output HDF5 file path to save the stratified phase data.
-    overwrite : bool, optional
-        Whether to overwrite the output file if it already exists, by default False.
-
-    Returns
-    -------
-    None
-        The stratified phase data is saved to the specified HDF5 file.
-
-    """
-    from . import stratified
-
-    if Path(out_hdf5).exists() and not overwrite:
-        logger.info(f"Not overwriting {out_hdf5}")
-        return
-    shape2d = dem.shape
-    shape3d = (num_days, *shape2d)
-    # stratified_kwargs = {"K_params": {"shape": (num_days,)}}
-    # print(stratified_kwargs)
-    with h5py.File(out_hdf5, "w") as hf:
-        dset = hf.create_dataset("data", shape=shape3d, dtype="float32", **HDF5_KWARGS)
-        for idx in range(num_days):
-            n = stratified.simulate(dem)
-            dset.write_direct(n, dest_sel=idx)
-
-
 def create_turbulence(
     shape2d: tuple[int, int],
     num_days: int,
@@ -384,7 +344,7 @@ def create_turbulence(
     overwrite: bool = False,
     max_amplitude: float = 1.0,
     resolution: tuple[float, float] = (30, 30),
-):
+) -> None:
     """Create a stack of turbulent atmospheric noise.
 
     Parameters
@@ -443,7 +403,7 @@ def create_defo_stack(
     out_hdf5: PathOrStr,
     max_amplitude: float = 1,
     overwrite: bool = False,
-) -> np.ndarray | None:
+) -> None:
     """Create the time series of deformation to add to each SAR date.
 
     Parameters
@@ -455,15 +415,9 @@ def create_defo_stack(
     max_amplitude : float, optional
         Maximum amplitude of the final deformation. Defaults to 1.
     out_hdf5 : PathOrStr | None, optional
-        Path to output HDF5 file, by default None. If None, the deformation is not saved to disk.
+        Path to output HDF5 file, by default None.
     overwrite : bool, optional
         Whether to overwrite the output file if it already exists, by default False.
-
-    Returns
-    -------
-    np.ndarray | None
-        Deformation stack with time series, shape (num_time_steps, rows, cols).
-        If `out_hdf5` is passed, None is returned, as the file has been saved to disk.
 
     """
     from .deformation import gaussian
