@@ -3,10 +3,11 @@ import logging
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 
+import h5py
 import numpy as np
 import rasterio as rio
-import tqdm
 from rasterio.windows import Window
+from tqdm.auto import tqdm
 
 from ._blocks import iter_blocks
 from ._types import PathOrStr
@@ -40,7 +41,7 @@ def compare_to_deformation(
 ) -> list[Path]:
     """Compare unwrapped interferograms to synthetic deformation.
 
-    This function compares a set of unwrapped interferogram files to synthetic deformation
+    This function compares a set of unwrapped interferograms to synthetic deformation
     data, optionally excluding areas with zero connected components, and outputs the
     differences as GeoTIFF files.
 
@@ -49,14 +50,16 @@ def compare_to_deformation(
     unw_files : Iterable[PathOrStr]
         An iterable of paths to unwrapped interferogram files.
     conncomp_files : Iterable[PathOrStr]
-        An iterable of paths to connected component files corresponding to the unwrapped interferograms.
-    deformation_file : PathOrStr, optional
+        An iterable of paths to connected component files corresponding to the
+        unwrapped interferograms.
+    truth_files : dict[str, PathOrStr], optional
         Path to the HDF5 file containing synthetic deformation data.
-        Default is Path("input_layers/deformation.h5").
+        Default is Path("input_layers.h5").
     output_dir : Path, optional
-        Directory where the difference files will be saved. Default is Path("differences").
+        Directory where the difference files will be saved.
+        Default is Path("differences").
     exclude_zero_conncomps : bool, optional
-        If True, areas with zero connected components will be excluded from the comparison.
+        If True, areas with connected component == 0 are excluded from the comparison.
         Default is True.
 
     Returns
@@ -81,8 +84,12 @@ def compare_to_deformation(
         shape2d = src.shape
         profile = src.profile | OUTPUT_PROFILE_DEFAULTS
 
+    # dolphin maybe have down striding, so the full deformation is larger
+    row_strides, col_strides = _get_downsample_factor(
+        shape2d, truth_files["deformation"]
+    )
     output_dir.mkdir(exist_ok=True, parents=True)
-    output_files = [output_dir / f"difference_{f.name}" for f in unw_file_list]
+    output_files = [output_dir / f"difference_{Path(f).name}" for f in unw_file_list]
     # Set up all output files
     for filename in output_files:
         with rio.open(filename, "w", **profile) as dst:
@@ -92,12 +99,23 @@ def compare_to_deformation(
     # ensure we difference things correctly
     b_iter = list(iter_blocks(arr_shape=shape2d, block_shape=BLOCK_SHAPE))
     for rows, cols in tqdm(b_iter):
-        truth_phase = load_current_phase(truth_files, rows=rows, cols=cols)
+        # Mape the output (strided) slice into the full resolution shape
+        full_rows = slice(
+            rows.start * row_strides, rows.stop * row_strides, row_strides
+        )
+        full_cols = slice(
+            cols.start * col_strides, cols.stop * col_strides, col_strides
+        )
+
+        logger.debug("Loading full res data...")
+        truth_phase = load_current_phase(truth_files, rows=full_rows, cols=full_cols)
+
         if len(unw_file_list) != (truth_phase.shape[0] - 1):
             raise ValueError(
                 f"{len(unw_file_list) = } should be {truth_phase.shape[0] = } - 1"
             )
         window = Window.from_slices(rows, cols)
+        # TODO: Need a spatial reference point to compare the unwrapped to truth
 
         for cur_truth, in_f, out_f, cc_f in zip(
             truth_phase, unw_file_list, output_files, conncomp_file_list
@@ -114,13 +132,19 @@ def compare_to_deformation(
                 mask = np.zeros(cur_unw.shape, dtype=bool)
             difference[mask] = 0
 
-            with rio.open(out_f, "w", **profile) as dst:
-                dst.write(difference, indexes=1)
+            with rio.open(out_f, "r+") as dst:
+                dst.write(difference, indexes=1, window=window)
 
-            for filename, layer in zip(output_files, difference):
-                with rio.open(filename, "r+") as dst:
-                    dst.write(layer, 1, window=window)
     return output_files
+
+
+def _get_downsample_factor(downsampled_shape, full_res_file):
+    with h5py.File(full_res_file) as hf:
+        full_shape = hf["data"].shape
+
+    row_strides = int(round(full_shape[-2] / downsampled_shape[0]))
+    col_strides = int(round(full_shape[-1] / downsampled_shape[1]))
+    return row_strides, col_strides
 
 
 def _get_cli_args():

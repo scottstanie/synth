@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Mapping
 
 import h5py
 import numpy as np
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_current_phase(
-    files: dict[str, PathOrStr], rows: slice, cols: slice
+    files: Mapping[str, PathOrStr], rows: slice, cols: slice
 ) -> np.ndarray:
     """Load and sum the phase data from multiple HDF5 files for a row/column block.
 
