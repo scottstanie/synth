@@ -1,4 +1,4 @@
-This part of the project documentation will contain step-by-step instructions for learning how to use the project.
+# Tutorials
 
 <!-- **learning-oriented** approach. You'll learn how to
 get started with the code in this project.
@@ -15,3 +15,6 @@ following points:
 - Show concrete examples, no abstractions
 - Provide the minimum necessary explanation
 - Avoid any distractions -->
+
+
+1. [Demo of Jupyter UI](notebooks/ui.ipynb)
