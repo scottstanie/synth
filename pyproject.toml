@@ -40,7 +40,7 @@ Changelog = "https://github.com/isce-framework/synth/releases"
 # Entry points for the command line interface
 [project.scripts]
 synth = "synth.cli:main"
-synth-compare = "synth.analysis:main"
+synth-compare = "synth.compare:main"
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]

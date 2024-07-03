@@ -1,7 +1,7 @@
-"""Module for simulating stacks of SLCs to test phase linking algorithms.
+"""Module for simulating stacks of SLCs.
 
-Contains simple versions of MLE and EVD estimator to compare against the
-full CPU/GPU stack implementations.
+Uses the Cholesky decomposition of a covariance matrix at each pixel
+to correlate complex circular Gaussian (CCG) samples over time.
 """
 
 from functools import partial
