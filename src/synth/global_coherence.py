@@ -66,6 +66,7 @@ def get_rasters(
     shape: tuple[int, int] | None = None,
     upsample_factors: tuple[int, int] | None = None,
     outfile: PathOrStr | None = None,
+    load_data: bool = True,
 ):
     """Retrieve Sentinel-1 global coherence dataset rasters.
 
@@ -89,6 +90,10 @@ def get_rasters(
         Alternative to `shape`: The upsampling factors for the x and y axes.
     outfile : str | None, optional
         If provided, the raster data will be saved to this file path.
+    load_data : bool, optional
+        Whether to return the loaded data.
+        If not, None is returned.
+        Default = True,
 
     Returns
     -------
@@ -105,7 +110,9 @@ def get_rasters(
 
     """
     if outfile and Path(outfile).exists():
-        logger.info("Reading from %s", outfile)
+        logger.info("Reading from existing %s", outfile)
+        if not load_data:
+            return None
         with rasterio.open(outfile) as src:
             return src.read(1), src.profile
 
@@ -156,7 +163,7 @@ def get_rasters(
             dst.write(data, 1)
         logger.info(f"Raster data saved to {outfile}")
 
-    return data, profile
+    return data, profile if load_data else None
 
 
 def model_2param(t: np.ndarray, rho_inf: float, tau: float, *args) -> np.ndarray:
@@ -258,6 +265,7 @@ def fetch_rho_tau_amp(
             variable=variable,
             outfile=outfile,
             upsample_factors=upsample,
+            load_data=False,
         )
         return outfile
 

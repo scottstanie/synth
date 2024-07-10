@@ -139,6 +139,7 @@ def create_simulation_data(
     )
     key = random.key(seed)
 
+    logger.info(f"{coherence_files = }")
     logger.info("Creating coherence matrices for each pixel")
     for rows, cols in tqdm(b_iter):
         amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask = load_coherence_files(
@@ -293,7 +294,7 @@ def create_turbulence(
         dset = hf.create_dataset("data", shape=shape3d, dtype="float32", **HDF5_KWARGS)
         for idx in tqdm(list(range(num_days))):
             with logging_redirect_tqdm():
-                logger.debug("Making ramp %s", idx)
+                logger.debug("Making turbulence %s", idx)
                 turb = turbulence.simulate(
                     shape=shape2d, resolution=res_y, max_amp=max_amp_meters
                 )
@@ -346,8 +347,9 @@ def create_defo_stack(
         dset = hf.create_dataset("data", shape=shape, dtype="float32", **HDF5_KWARGS)
         for idx, t in tqdm(list(enumerate(time_evolution))):
             with logging_redirect_tqdm():
-                logger.debug("Making ramp %s", idx)
-                data = round_mantissa(final_defo * t, 8)
+                logger.debug("Making deformation %s", idx)
+                data = final_defo * t
+                round_mantissa(data, 8)
                 logger.debug("Saving....")
                 dset[idx] = data
 
