@@ -9,25 +9,27 @@ import rasterio as rio
 import rasterio.windows
 from jax import random
 from tqdm.auto import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from troposim import turbulence
 
 from . import covariance, deformation, global_coherence
 from ._blocks import iter_blocks
 from ._types import Bbox, PathOrStr
 from .config import SimulationInputs
-from .utils import _setup_logging, load_current_phase
+from .utils import _setup_logging, load_current_phase, round_mantissa
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
 # HDF5_KWARGS = {"chunks": (4, 128, 128), "compression": "lzf"}
 HDF5_KWARGS: dict[str, tuple | str] = {}
-BLOCK_SHAPE = (256, 256)
 
 logger = logging.getLogger("synth")
 
 
 def create_simulation_data(
-    inps: SimulationInputs, seed: int = 0, verbose: bool = False
+    inps: SimulationInputs,
+    seed: int = 0,
+    verbose: bool = False,
 ):
     """Create realistic SLC simulated data.
 
@@ -51,7 +53,7 @@ def create_simulation_data(
         The simulated noisy stack of SLC data.
 
     """
-    _setup_logging()
+    _setup_logging(level=logging.DEBUG if verbose else logging.INFO)
 
     # Create list of SLC dates
     time = [
@@ -79,6 +81,7 @@ def create_simulation_data(
         bounds=inps.bounding_box,
         upsample=upsample,
         output_dir=layers_dir,
+        rho_transform=inps.rho_transform,
     )
     with rio.open(coherence_files[0]) as src:
         shape2d = src.shape
@@ -131,7 +134,7 @@ def create_simulation_data(
     b_iter = list(
         iter_blocks(
             arr_shape=shape2d,
-            block_shape=BLOCK_SHAPE,
+            block_shape=inps.block_shape,
         )
     )
     key = random.key(seed)
@@ -236,10 +239,14 @@ def create_ramps(
     with h5py.File(out_hdf5, "w") as hf:
         dset = hf.create_dataset("data", shape=shape3d, dtype="float32", **HDF5_KWARGS)
         for idx, r in enumerate(rotations):
-            ramp_phase = deformation.ramp(
-                shape=shape2d, amplitude=amplitude, rotate_degrees=r
-            )
-            dset.write_direct(ramp_phase, dest_sel=idx)
+            with logging_redirect_tqdm():
+                logger.debug("Making ramp %s", idx)
+                ramp_phase = deformation.ramp(
+                    shape=shape2d, amplitude=amplitude, rotate_degrees=r
+                )
+                logger.debug("Saving....")
+                round_mantissa(ramp_phase, significant_bits=8)
+                dset[idx] = ramp_phase
 
 
 def create_turbulence(
@@ -285,10 +292,17 @@ def create_turbulence(
     with h5py.File(out_hdf5, "w") as hf:
         dset = hf.create_dataset("data", shape=shape3d, dtype="float32", **HDF5_KWARGS)
         for idx in tqdm(list(range(num_days))):
-            turb_meters = turbulence.simulate(
-                shape=shape2d, resolution=res_y, max_amp=max_amp_meters
-            )
-            dset.write_direct(turb_meters * METERS_TO_PHASE, dest_sel=idx)
+            with logging_redirect_tqdm():
+                logger.debug("Making ramp %s", idx)
+                turb = turbulence.simulate(
+                    shape=shape2d, resolution=res_y, max_amp=max_amp_meters
+                )
+                turb *= METERS_TO_PHASE
+
+                round_mantissa(turb, significant_bits=9)
+                logger.debug("Saving....")
+                dset[idx] = turb
+            # dset.write_direct(turb, dest_sel=idx) # needs to be contiguous
 
 
 def create_defo_stack(
@@ -331,7 +345,11 @@ def create_defo_stack(
     with h5py.File(out_hdf5, "w") as hf:
         dset = hf.create_dataset("data", shape=shape, dtype="float32", **HDF5_KWARGS)
         for idx, t in tqdm(list(enumerate(time_evolution))):
-            dset.write_direct(final_defo * t, dest_sel=idx)
+            with logging_redirect_tqdm():
+                logger.debug("Making ramp %s", idx)
+                data = round_mantissa(final_defo * t, 8)
+                logger.debug("Saving....")
+                dset[idx] = data
 
 
 def fetch_dem(bounds: Bbox, output_dir: Path, upsample_factor: tuple[int, int]):

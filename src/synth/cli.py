@@ -6,6 +6,7 @@ from synth.config import SimulationInputs
 
 def get_cli_args() -> SimulationInputs:
     """Create a new `SimulationInputs` object from CLI args."""
+    print("WHY")
     return SimulationInputs()
 
 
@@ -13,13 +14,12 @@ def main():
     """Open the simulation parameters and generate data."""
     inputs = None
     if len(sys.argv) == 2 and sys.argv[1] != "--help":
-        try:
-            p = Path(sys.argv[1])
-            if p.exists() and p.suffix == ".json":
-                with open(p) as f:
-                    inputs = SimulationInputs.model_validate_json(f.read())
-        except Exception:
-            pass
+        p = Path(sys.argv[1])
+        if p.exists() and p.suffix == ".json":
+            with open(p) as f:
+                # Erase the args passed in if this is a filename
+                sys.argv = sys.argv[:1]
+                inputs = SimulationInputs.model_validate_json(f.read())
 
     if inputs is None:
         inputs = get_cli_args()

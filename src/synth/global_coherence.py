@@ -1,7 +1,6 @@
 import logging
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from enum import Enum
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +9,8 @@ from affine import Affine
 from numpy.typing import ArrayLike
 from rasterio import windows
 
-from ._types import Bbox, PathOrStr
+from ._types import Bbox, PathOrStr, RhoOption, Season, Variable
+from .utils import DummyProcessPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -20,24 +20,6 @@ COHERENCE_GPKG_TEMPLATE = "/vsizip/" + str(
     Path(__file__).parent
     / "data/coherence_{season}_{variable}.gti.gpkg.zip/coherence_{season}_{variable}.gti.gpkg"
 )
-
-
-class Season(Enum):
-    """Seasonal periods for the year."""
-
-    WINTER = "winter"
-    SPRING = "spring"
-    SUMMER = "summer"
-    FALL = "fall"
-
-
-class Variable(Enum):
-    """Variables for the global coherence raster."""
-
-    AMP = "amp"  # note: capitalized in the dataset
-    TAU = "tau"
-    RHO = "rho"
-    RMSE = "rmse"
 
 
 def convert_to_float(X: np.ndarray, variable: Variable) -> np.ndarray:
@@ -83,8 +65,6 @@ def get_rasters(
     season: Season | str,
     shape: tuple[int, int] | None = None,
     upsample_factors: tuple[int, int] | None = None,
-    convert_data: bool = True,
-    interp_method: str = "linear",
     outfile: PathOrStr | None = None,
 ):
     """Retrieve Sentinel-1 global coherence dataset rasters.
@@ -107,13 +87,6 @@ def get_rasters(
         interpolated to this shape.
     upsample_factors : tuple[int, int] | None, optional
         Alternative to `shape`: The upsampling factors for the x and y axes.
-    convert_data : bool, optional
-        If True, the data will be converted to the appropriate units.
-        AMP rasters will be converted to power
-        rho, tau, rmse are converted to floats.
-        See `convert_to_float` for details.
-    interp_method : str, optional
-        The interpolation method to use, by default "linear".
     outfile : str | None, optional
         If provided, the raster data will be saved to this file path.
 
@@ -151,9 +124,6 @@ def get_rasters(
         profile = src.profile.copy()
         if upsample_factors is not None and upsample_factors != (1, 1):
             shape = tuple(np.round(np.array(shape) * upsample_factors).astype(int))
-            # shape = int(
-            #     shape[0] * upsample_factors[0], int(shape[1] * upsample_factors[1])
-            # )
 
         # Read the data
         data = src.read(
@@ -180,23 +150,6 @@ def get_rasters(
         # print(f"{season=} {variable=} {data.max()=}")
         profile.update(dtype="float32")
 
-    # if shape is not None or (
-    #     upsample_factors is not None and upsample_factors != (1, 1)
-    # ):
-    #     if shape is None:
-    #         shape = (
-    #             int(profile["height"] * upsample_factors[0]),
-    #             int(profile["width"] * upsample_factors[1]),
-    #         )
-    #     data = _interpolate_data(data, shape, method=interp_method)
-
-    #     # Update the profile with the new shape
-    #     profile.update(height=shape[0], width=shape[1])
-    #     profile["transform"] *= Affine.scale(
-    #         1 / upsample_factors[1], 1 / upsample_factors[0]
-    #     )
-
-    # data = data.astype("float16")
     if outfile:
         compression = {"compress": "lzw", "nbits": "16"}
         with rasterio.open(outfile, "w", **(profile | compression)) as dst:
@@ -291,32 +244,6 @@ def fit_model(
     return popt, pcov
 
 
-from collections.abc import Callable
-from concurrent.futures import Executor, Future
-from typing import ParamSpec, TypeVar
-
-P = ParamSpec("P")
-T = TypeVar("T")
-
-
-class DummyProcessPoolExecutor(Executor):
-    """Dummy ProcessPoolExecutor for to avoid forking for single_job purposes."""
-
-    def __init__(self, max_workers: int | None = None, **kwargs):  # noqa: D107
-        self._max_workers = max_workers
-
-    def submit(  # noqa: D102
-        self, fn: Callable[P, T], /, *args: P.args, **kwargs: P.kwargs
-    ) -> Future[T]:
-        future: Future = Future()
-        result = fn(*args, **kwargs)
-        future.set_result(result)
-        return future
-
-    def shutdown(self, wait: bool = True, cancel_futures: bool = True):  # noqa: D102
-        pass
-
-
 def fetch_rho_tau_amp(
     bounds: Bbox,
     upsample: tuple[int, int] = (1, 1),
@@ -371,6 +298,7 @@ def get_coherence_model_coeffs(
     bounds: Bbox,
     seasonal_ptp_cutoff: float = 0.5,
     upsample: tuple[int, int] = (1, 1),
+    rho_transform: RhoOption = RhoOption.SHRUNK,
     output_dir: Path = Path(),
     max_workers: int = 4,
 ):
@@ -397,6 +325,7 @@ def get_coherence_model_coeffs(
         tau_files=tau_files,
         amp_files=amp_files,
         seasonal_ptp_cutoff=seasonal_ptp_cutoff,
+        rho_transform=rho_transform,
     )
     return (
         amp_mean_file,
@@ -474,6 +403,7 @@ def calculate_seasonal_coeffs_files(
     tau_files: Sequence[Path],
     amp_files: Sequence[Path],
     seasonal_ptp_cutoff: float = 0.5,
+    rho_transform: RhoOption = RhoOption.SHRUNK,
 ):
     """Compute the seasonal A and B parameters from a list of rho files."""
     # Using gdal calc, we can avoid loading everything, and it will save to a new file
@@ -540,9 +470,17 @@ def calculate_seasonal_coeffs_files(
     if not tau_max_out.exists():
         _log_and_run(cmd)
 
+    if rho_transform == RhoOption.SHRUNK:
+        rho_out = rho_shrunk_out
+    elif rho_transform == RhoOption.MIN:
+        rho_out = rho_min_out
+    elif rho_transform == RhoOption.MAX:
+        rho_out = rho_max_out
+    else:
+        raise ValueError(f"Unknown option for {rho_transform=}")
     return (
         amp_mean_out,
-        rho_shrunk_out,
+        rho_out,
         tau_max_out,
         seasonal_A_out,
         seasonal_B_out,
