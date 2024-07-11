@@ -126,11 +126,8 @@ This is a heuristic to shrink all long-term coherences toward zero, where the $\
 
 ### Modeling seasonal decorrelation
 
-Since certain regions show large differences for $\rho_{\infty}$ we map a "seasonal" map for pixel which have a peak-to-peak change greater than some threshold (nomially 0.5).
-
-At these "seasonal" pixels, we use a different correlation model
-
-For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$, we use a seasonal decorrelation model similar to (Even and Schulz, 2018). The correlation $\gamma$ between for the interferogram formed using images from time $t_{m}$ and $t_{n}$ is
+Since certain regions show large differences for $\rho_{\infty}$ we create a "seasonal" map for pixels which have a peak-to-peak change greater than some threshold (e.g. 0.5).
+For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$, we model decorrelation similar to (cite Even and Schulz, 2018). The correlation $\gamma$ between for the interferogram formed using images from time $t_{m}$ and $t_{n}$ is
 
 $$
 \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right) \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
