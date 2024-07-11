@@ -120,6 +120,7 @@ $$
 \rho^4 & \text{otherwise}
 \end{cases}
 $$
+
 This is a heuristic to shrink all long-term coherences toward zero, where the $\rho^{4}$ case is to add more noise in low-coherence regions to combat the upwardly biased coherence estimator[^2].
 
 [^2]: While it's true that the Kellndorfer paper says the bias is very low due to the number of looks they took, my initial Central Valely test had very few regions that looks like pure noise even after 1 year.
