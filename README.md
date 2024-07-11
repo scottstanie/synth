@@ -40,7 +40,7 @@ The overall workflow [for generating a stack of SLCs](src/synth/core.py) is as f
 The SLCs are saved in GeoTIFF format, one raster per requested date.
 The propagation phases are also saved as 3D data cubes in HDF5 files.
 
-Note that the "truth" phase sources included tropospheric noise and phase ramps; since one common use is to compare the ability of [phase linking algorithms](https://github.com/isce-framework/dolphin) to estimate a wrapped phase time series, the desired outputs include all "propagation phases".
+Note that the "truth" phase sources include tropospheric noise and phase ramps. One common use is to compare [phase linking algorithms](https://github.com/isce-framework/dolphin), which estimate a wrapped phase time series; in this case, the desired outputs include all "propagation phases".
 
 ## Propagation phase sources
 
@@ -62,36 +62,24 @@ Currently, the following deformation sources are supported:
 
 ## Decorrelation Noise
 
-At each pixel, we use some decorrelation model to create a coherence matrix $T$ to model the temporal correlation of the noise.
-A coherence matrix is power-normalized, meaning that the relation to a covariance matrix covariance matrices $C$, which is related to $T$ by
+At each pixel, we use some decorrelation model to create a coherence matrix $T$, where element $|T_{ij}| = \gamma \exp(-1j \phi)$ contains the coherence magnitude $\gamma$ and interferometric phase $\phi$.
+
+To generate correlated random samples,
+
+1. Find $L$ such that $T = L L^H$ using the Cholesky factor[^1].
+1. Generate an instance $\mathbf{y}$ of Circular Complex Gaussian (CCG) noise.
+1. Multiply $\mathbf{z} = T \mathbf{y}$ to obtain the correlated sample.
+1. (optional) If we want the amplitudes to match real data, we can multiply $A \mathbf{z}$, where $A = \text{diag}(\mathbf{\boldsymbol{\sigma} })$.
+
+Here, we use the coherence matrix, which is power-normalized. The relation to the sample covariance matrix covariance matrix $C$ is
 
 $$
 C = T \circ \boldsymbol{\sigma}\boldsymbol{\sigma}^{H}
 $$
 
 where $\circ$ is the Hadamard product, and $\boldsymbol{\sigma}= [\sigma_{1}, \dots, \sigma_{N}]^{T}$ is the vector of SLC standard deviations: $\sigma_{k} = \sqrt{ \mathbf{E}[\mid x_{k}\mid^{2} ] }$  .
-Once we find $L$ such that $L L^{H} = T$, we multiply an instance $\mathbf{y}$ of Circular Complex Gaussian (CCG) noise to obtain $\mathbf{z} = L \mathbf{y}$, our correlated noise sample. If we want the amplitudes to match real data, we can multiply $A \mathbf{z}$, where $A = \text{diag}(\mathbf{\boldsymbol{\sigma} })$
 
-To generate random samples which follow a given matrix $\Sigma$ ?
-
-1. Generate a noise sample $\mathbf{x} \in \mathbb{R}^{N}$ drawn from the multivariate standard normal: $\mathbf{x} \sim \mathcal{N}(\mathbf{0}, I)$
-2. Cholesky factor[^1] $\Sigma$ into $L L^{H}$
-3. The vector $\mathbf{y} = L \mathbf{x}$ will be distributed $\sim \mathcal{N}(0, \Sigma)$
-
-We see that covariance of $\mathbf{y}$ is
-
-$$
-\begin{gather}
-\mathbf{E}[\mathbf{y} \mathbf{y}^{T} ] = \mathbf{E}[L\mathbf{x}(L\mathbf{x})^{H}] \\
-= L \mathbf{E}[\mathbf{x}\mathbf{x}^{H}]L^{H} \\
-= L I L^{H} \\
-= \Sigma
-\end{gather}
-$$
-
-
-[^1]: Actually, any factorization such that $\Sigma = L L^{T}$ would work. The `multivariate_normal` function has three options: Cholesky, eivenvalue decomposition with `eigh`, and SVD. The Cholesky is the fastest, but least robust if your covariance matrix is near-singular.
-
+[^1]: Any factorization such that $\Sigma = L L^{T}$ would work. The `multivariate_normal` function has three options: Cholesky, eigenvalue decomposition with `eigh`, and SVD. The Cholesky is the fastest, but least robust if your covariance matrix is near-singular.
 
 ### Making the decorrelation realistic
 Choosing random decorrelation parameters for each pixel in space would not be conducive for running real workflows that rely on averaging pixels in space.
@@ -108,10 +96,11 @@ The backscatter model $\sigma_0$ was also estimated for each season.
 ### Using the decorrelation model parameters
 
 Two example $\rho_{\infty}$ maps are shown below over the Central Valley in California. The first is for winter, and the second is for fall.
-![](docs/rho-infinity-fall.webp)
-![](docs/rho-infinity-winter.webp)
 
-To create an exponentially decaying correlation matrix, we could attempt to blend all four seasons' model parameters; howeveer, for the current version, we have simply chosen the minimum $\rho_{\infty}$ to use for the entire pixel's stack.
+![Rho infinity for fall](docs/rho-infinity-fall.webp)
+![Rho infinity for winter](docs/rho-infinity-winter.webp)
+
+To create an exponentially decaying correlation matrix, we could attempt to blend all four seasons' model parameters; however, for the current version, we have simply chosen the minimum $\rho_{\infty}$ to use for the entire pixel's stack.
 For certain regions, even using the minimum $\rho$ did not produce very strong decorrelation noise. Therefore we also added an option to use, as the long-term coherence value
 
 $$
@@ -128,7 +117,7 @@ This is a heuristic to shrink all long-term coherences toward zero, where the $\
 ### Modeling seasonal decorrelation
 
 Since certain regions show large differences for $\rho_{\infty}$ we create a "seasonal" map for pixels which have a peak-to-peak change greater than some threshold (e.g. 0.5).
-For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$, we model decorrelation similar to (cite Even and Schulz, 2018). The correlation $\gamma$ between for the interferogram formed using images from time $t_{m}$ and $t_{n}$ is
+For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$, we model decorrelation similar to (cite Even and Schulz, 2018). The correlation $\gamma$ for the interferogram formed using images from time $t_{m}$ and $t_{n}$ is
 
 $$
 \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right) \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
@@ -143,7 +132,3 @@ A = \frac{1}{2} (1 + \sqrt{ \rho_{\infty} })  \\
 B = \frac{1}{2} (1 - \sqrt{ \rho_{\infty} })
 \end{gather}
 $$
-
-## Results
-
-(todo)
