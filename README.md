@@ -98,12 +98,12 @@ Choosing random decorrelation parameters for each pixel in space would not be co
 Therefore, we use the global coherence dataset to estimate the decorrelation parameters for each pixel.
 
 The coherence dataset, publicly available on [AWS](https://aws.amazon.com/marketplace/pp/prodview-iz6lnjbdlgcwa#overview), contains seasonal coherence models and average backscatter. The model for coherence $\gamma$ was
+
 $$
 \gamma(t) = (1 - \rho_{\infty})\exp(-t / \tau) + \rho_{\infty}
 $$
 where $\rho_{\infty}$ is the long-term coherence, $\tau$ is the decorrelation time, and $t$ is the time in days.
 The backscatter model $\sigma_0$ was also estimated for each season.
-
 
 ### Using the decorrelation model parameters
 
@@ -113,6 +113,7 @@ Two example $\rho_{\infty}$ maps are shown below over the Central Valley in Cali
 
 To create an exponentially decaying correlation matrix, we could attempt to blend all four seasons' model parameters; howeveer, for the current version, we have simply chosen the minimum $\rho_{\infty}$ to use for the entire pixel's stack.
 For certain regions, even using the minimum $\rho$ did not produce very strong decorrelation noise. Therefore we also added an option to use, as the long-term coherence value
+
 $$
 \begin{cases}
 \rho^2 & \text{if } \rho > 0.2 \\
@@ -127,14 +128,14 @@ This is a heuristic to shrink all long-term coherences toward zero, where the $\
 
 Since certain regions show large differences for $\rho_{\infty}$ we map a "seasonal" map for pixel which have a peak-to-peak change greater than some threshold (nomially 0.5).
 
-
 At these "seasonal" pixels, we use a different correlation model
 
-
 For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$, we use a seasonal decorrelation model similar to (Even and Schulz, 2018). The correlation $\gamma$ between for the interferogram formed using images from time $t_{m}$ and $t_{n}$ is
+
 $$
 \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right) \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
 $$
+
 where $A, B$ are related to $\rho_{\infty}$ and $\rho_{0}$ (the initial correlation) by $\gamma_{0} = (A + B)^{2}$ and $\gamma_{min} \triangleq \rho_{\infty} = (A - B)^{2}$.
 We can solve for the $A, B$ parameters by inverting this relation: Since $\gamma_{0}=1$ in the (Kellndorfer, 2020) model, then $B = (1 - A)$, and thus
 $$
