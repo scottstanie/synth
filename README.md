@@ -40,17 +40,17 @@ The overall workflow [for generating a stack of SLCs](src/synth/core.py) is as f
 The SLCs are saved in GeoTIFF format, one raster per requested date.
 The propagation phases are also saved as 3D data cubes in HDF5 files.
 
-Note that the "truth" phase sources included tropospheric noise and phase ramps; since one common use is to compare the ability of [phase linking algorithms](https://github.com/isce-framework/dolphin) to estimate a wrapped phase time series, the desired outputs include all "propagation phases". 
+Note that the "truth" phase sources included tropospheric noise and phase ramps; since one common use is to compare the ability of [phase linking algorithms](https://github.com/isce-framework/dolphin) to estimate a wrapped phase time series, the desired outputs include all "propagation phases".
 
 ## Propagation phase sources
 
-### Tropospheric Turbulence 
+### Tropospheric Turbulence
 
 The tropospheric turbulence noise uses the [`troposim`](https://github.com/scottstanie/troposim) package (Staniewicz, 2024), which uses an isotropic representation of the power spectral density (PSD) (cite: Hanssen, 2001).
 
 ### Phase ramp
 
-To simulate longer-wavelength noise sources, we allow simple planar phase ramps to be added at each date. 
+To simulate longer-wavelength noise sources, we allow simple planar phase ramps to be added at each date.
 The maximum amplitude may be set, and the orientation of each date's phase ramp is randomized
 
 ### Deformation sources
@@ -63,7 +63,7 @@ Currently, the following deformation sources are supported:
 ## Decorrelation Noise
 
 At each pixel, we use some decorrelation model to create a coherence matrix $T$ to model the temporal correlation of the noise.
-A coherence matrix is power-normalized, meaning that the relation to a covariance matrix covariance matrices $C$, which is related to $T$ by 
+A coherence matrix is power-normalized, meaning that the relation to a covariance matrix covariance matrices $C$, which is related to $T$ by
 
 $$
 C = T \circ \boldsymbol{\sigma}\boldsymbol{\sigma}^{H}
@@ -78,12 +78,13 @@ To generate random samples which follow a given matrix $\Sigma$ ?
 2. Cholesky factor[^1] $\Sigma$ into $L L^{H}$
 3. The vector $\mathbf{y} = L \mathbf{x}$ will be distributed $\sim \mathcal{N}(0, \Sigma)$
 
-We see that covariance of $\mathbf{y}$ is 
+We see that covariance of $\mathbf{y}$ is
+
 $$
 \begin{gather}
 \mathbf{E}[\mathbf{y} \mathbf{y}^{T} ] = \mathbf{E}[L\mathbf{x}(L\mathbf{x})^{H}] \\
 = L \mathbf{E}[\mathbf{x}\mathbf{x}^{H}]L^{H} \\
-= L I L^{H} \\ 
+= L I L^{H} \\
 = \Sigma
 \end{gather}
 $$
@@ -106,14 +107,14 @@ The backscatter model $\sigma_0$ was also estimated for each season.
 
 ### Using the decorrelation model parameters
 
-Two example $\rho_{\infty}$ maps are shown below over the Central Valley in California. The first is for winter, and the second is for fall. 
+Two example $\rho_{\infty}$ maps are shown below over the Central Valley in California. The first is for winter, and the second is for fall.
 ![](docs/rho-infinity-fall.webp)
 ![](docs/rho-infinity-winter.webp)
 
 To create an exponentially decaying correlation matrix, we could attempt to blend all four seasons' model parameters; howeveer, for the current version, we have simply chosen the minimum $\rho_{\infty}$ to use for the entire pixel's stack.
-For certain regions, even using the minimum $\rho$ did not produce very strong decorrelation noise. Therefore we also added an option to use, as the long-term coherence value 
+For certain regions, even using the minimum $\rho$ did not produce very strong decorrelation noise. Therefore we also added an option to use, as the long-term coherence value
 $$
-\begin{cases} 
+\begin{cases}
 \rho^2 & \text{if } \rho > 0.2 \\
 \rho^4 & \text{otherwise}
 \end{cases}
@@ -134,7 +135,7 @@ For pixels with $\max_{k}(\rho^{k}_{\infty}) - \min_{k}(\rho_{\infty}^{k})>0.5$,
 $$
 \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right) \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
 $$
-where $A, B$ are related to $\rho_{\infty}$ and $\rho_{0}$ (the initial correlation) by $\gamma_{0} = (A + B)^{2}$ and $\gamma_{min} \triangleq \rho_{\infty} = (A - B)^{2}$. 
+where $A, B$ are related to $\rho_{\infty}$ and $\rho_{0}$ (the initial correlation) by $\gamma_{0} = (A + B)^{2}$ and $\gamma_{min} \triangleq \rho_{\infty} = (A - B)^{2}$.
 We can solve for the $A, B$ parameters by inverting this relation: Since $\gamma_{0}=1$ in the (Kellndorfer, 2020) model, then $B = (1 - A)$, and thus
 $$
 \begin{gather}
