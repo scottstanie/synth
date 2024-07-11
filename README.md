@@ -135,6 +135,7 @@ $$
 
 where $A, B$ are related to $\rho_{\infty}$ and $\rho_{0}$ (the initial correlation) by $\gamma_{0} = (A + B)^{2}$ and $\gamma_{min} \triangleq \rho_{\infty} = (A - B)^{2}$.
 We can solve for the $A, B$ parameters by inverting this relation: Since $\gamma_{0}=1$ in the (Kellndorfer, 2020) model, then $B = (1 - A)$, and thus
+
 $$
 \begin{gather}
 A = \frac{1}{2} (1 + \sqrt{ \rho_{\infty} })  \\
