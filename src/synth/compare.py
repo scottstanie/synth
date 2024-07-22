@@ -150,7 +150,7 @@ def compare_phase(
                 difference[coh_mask] = np.nan
 
             if conncomp_files and exclude_zero_conncomps:
-                cc_f = next(conncomp_files)
+                cc_f = next(iter(conncomp_files))
                 with rio.open(cc_f) as src:
                     mask = src.read(1, window=window) == 0
                 difference[mask] = np.nan
