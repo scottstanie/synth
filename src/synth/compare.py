@@ -140,7 +140,9 @@ def compare_phase(
                 cur_phase = src.read(1, window=window)
 
             if is_wrapped:
-                difference = np.angle(np.exp(1j * (cur_phase - cur_truth)))
+                if np.iscomplexobj(cur_phase):
+                    cur_phase = np.angle(cur_phase)
+                difference = np.angle(np.exp(1j * (cur_phase + cur_truth)))
             else:
                 difference = cur_phase + cur_truth
                 difference -= difference.mean()
@@ -157,6 +159,52 @@ def compare_phase(
 
             with rio.open(out_f, "r+") as dst:
                 dst.write(difference, indexes=1, window=window)
+
+    return output_files
+
+
+def create_truth_rasters(
+    phase_files: Iterable[PathOrStr],
+    truth_files: Mapping[str, PathOrStr] = DEFAULT_TRUTH_FILES,
+    output_dir: Path = Path("truth"),
+    reference_idx: int = 0,
+) -> list[Path]:
+    phase_file_list = list(phase_files)
+    with rio.open(phase_file_list[0]) as src:
+        shape2d = src.shape
+        profile = src.profile | OUTPUT_PROFILE_DEFAULTS
+
+    row_strides, col_strides = _get_downsample_factor(
+        shape2d, truth_files["deformation"]
+    )
+
+    output_dir.mkdir(exist_ok=True, parents=True)
+    output_files = [output_dir / f"total_phase_{Path(f).name}" for f in phase_file_list]
+
+    for filename in output_files:
+        with rio.open(filename, "w", **profile) as dst:
+            pass
+
+    b_iter = list(iter_blocks(arr_shape=shape2d, block_shape=BLOCK_SHAPE))
+    for rows, cols in tqdm(b_iter):
+        full_rows = slice(
+            rows.start * row_strides, rows.stop * row_strides, row_strides
+        )
+        full_cols = slice(
+            cols.start * col_strides, cols.stop * col_strides, col_strides
+        )
+
+        truth_phase = load_current_phase(truth_files, rows=full_rows, cols=full_cols)
+
+        # TODO: do we always assume single ref, first date?
+        # Should probably come up with a way to specify this...
+        truth_phase = truth_phase[1:] - truth_phase[[reference_idx]]
+
+        window = Window.from_slices(rows, cols)
+
+        for cur_truth, out_f in zip(truth_phase, output_files):
+            with rio.open(out_f, "r+") as dst:
+                dst.write(cur_truth, indexes=1, window=window)
 
     return output_files
 
