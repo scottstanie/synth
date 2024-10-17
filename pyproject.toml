@@ -41,6 +41,7 @@ Changelog = "https://github.com/isce-framework/synth/releases"
 [project.scripts]
 synth = "synth.cli:main"
 synth-compare = "synth.compare:main"
+synth-run = "synth.cli:run"
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]

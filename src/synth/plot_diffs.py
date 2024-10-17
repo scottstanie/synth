@@ -3,11 +3,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from dolphin import io
-from opera_utils import get_dates
+import seaborn as sns
 
 
 def plot_differences(directories):
+    from opera_utils import get_dates
+    from dolphin import io
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 8))
     colors = plt.cm.rainbow(np.linspace(0, 1, len(directories)))
 
@@ -31,8 +33,6 @@ def plot_differences(directories):
         # Calculate product
         # cur_pixel_diffs = np.angle(np.exp(1j * (pixels - p0[:, None])))
         cur_pixel_diffs = pixels
-        # import ipdb
-        # ipdb.set_trace()
 
         # Plot on first subplot
         # ax1.plot(dates, cur_pixel_diffs, lw=0.5, alpha=0.2, color=color)
@@ -69,11 +69,6 @@ def plot_differences(directories):
 
 def rmse(arr, axis=1):
     return np.sqrt(np.mean(arr * arr.conj(), axis=axis))
-
-
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
 
 def plot_temporal_coherence_vs_rmse(df):

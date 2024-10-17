@@ -6,7 +6,6 @@ from synth.config import SimulationInputs
 
 def get_cli_args() -> SimulationInputs:
     """Create a new `SimulationInputs` object from CLI args."""
-    print("WHY")
     return SimulationInputs()
 
 
@@ -26,6 +25,28 @@ def main():
     from synth.core import create_simulation_data
 
     create_simulation_data(inputs)
+
+
+def run():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Compare phase files to synthetic deformation."
+    )
+    parser.add_argument(
+        "-f",
+        "--params-file",
+        type=Path,
+        default=Path("simulation_params.json"),
+        help="Paths to simulation parameters JSON file",
+    )
+    args = parser.parse_args()
+
+    from synth.core import create_simulation_data
+
+    with open(args.params_file) as f:
+        inputs = SimulationInputs.model_validate_json(f.read())
+        create_simulation_data(inputs)
 
 
 if __name__ == "__main__":
