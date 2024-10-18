@@ -133,6 +133,21 @@ def create_simulation_data(
         with rio.open(filename, "w", **slc_profile) as dst:
             pass
 
+    if inps.include_summed_truth:
+        # Setup summed truth phase files
+        truth_dir = layers_dir / "total"
+        truth_dir.mkdir(exist_ok=True)
+        truth_filenames = [
+            truth_dir / f"{date.strftime('%Y%m%d')}.slc.tif" for date in time
+        ]
+        truth_profile = slc_profile.copy() | {"dtype": "float32", "nbits": "16"}
+        # truth_profile["transform"][0] /= inps.multilook_truth[1]  # x looks
+        # truth_profile["transform"][4] /= inps.multilook_truth[0]  # y looks
+
+        for filename in truth_filenames:
+            with rio.open(filename, "w", **truth_profile) as dst:
+                pass
+
     b_iter = list(
         iter_blocks(
             arr_shape=shape2d,
@@ -141,7 +156,7 @@ def create_simulation_data(
     )
     key = random.key(seed)
 
-    tqdm.write("Simulating correlated noise")
+    logger.info("Simulating correlated noise")
     for rows, cols in tqdm(b_iter):
         if using_global_coh:
             logger.info(f"{coherence_files = }")
@@ -178,6 +193,11 @@ def create_simulation_data(
         for filename, layer in zip(output_slc_filenames, noisy_stack):
             with rio.open(filename, "r+", **profile) as dst:
                 dst.write(layer, 1, window=window)
+
+        if inps.include_summed_truth:
+            for filename, layer in zip(truth_filenames, propagation_phase):
+                with rio.open(filename, "r+", **truth_profile) as dst:
+                    dst.write(layer, 1, window=window)
 
     return output_slc_filenames
 

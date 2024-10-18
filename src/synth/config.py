@@ -80,6 +80,7 @@ class SimulationInputs(BaseModel):
     max_ramp_amplitude: float = 1.0
     include_stratified: bool = False
     rho_transform: RhoOption = RhoOption.SHRUNK
+    include_summed_truth: bool = True
 
     block_shape: tuple[int, int] = Field(
         (128, 128),
