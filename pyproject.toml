@@ -39,7 +39,7 @@ Changelog = "https://github.com/isce-framework/synth/releases"
 
 # Entry points for the command line interface
 [project.scripts]
-synth = "synth.cli:main"
+# synth = "synth.cli:main"
 synth-compare = "synth.compare:main"
 synth-run = "synth.cli:run"
 

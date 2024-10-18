@@ -421,7 +421,10 @@ def calculate_seasonal_coeffs_files(
     base_cmd = f"gdal_calc --quiet {common_opts} "
     # Get the mean of the amp files:
     amp_mean_out = amp_files[0].parent / "amp_mean.tif"
-    cmd = f"{base_cmd} -A {' '.join(map(str, amp_files))} --outfile={amp_mean_out} --calc='numpy.mean(A,axis=0)'"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {' '.join(map(str, amp_files))} --outfile={amp_mean_out} --calc='numpy.mean(A,axis=0)'"
+    )
     if not amp_mean_out.exists():
         _log_and_run(cmd)
 
@@ -430,13 +433,19 @@ def calculate_seasonal_coeffs_files(
     a, b, c, d = rho_files
     # Get the minimum of rho:
     rho_min_out = a.parent / "rho_min.tif"
-    cmd = f"{base_cmd} -A {a} {b} {c} {d} --outfile={rho_min_out} --calc='numpy.min(A,axis=0)'"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {a} {b} {c} {d} --outfile={rho_min_out} --calc='numpy.min(A,axis=0)'"
+    )
     if not rho_min_out.exists():
         _log_and_run(cmd)
 
     # Get the maximum of rho:
     rho_max_out = a.parent / "rho_max.tif"
-    cmd = f"{base_cmd} -A {a} {b} {c} {d} --outfile={rho_max_out} --calc='numpy.max(A,axis=0)'"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {a} {b} {c} {d} --outfile={rho_max_out} --calc='numpy.max(A,axis=0)'"
+    )
     if not rho_max_out.exists():
         _log_and_run(cmd)
 
@@ -450,31 +459,46 @@ def calculate_seasonal_coeffs_files(
 
     # Get the peak-to-peak raster:
     ptp_out = a.parent / "rho_ptp.tif"
-    cmd = f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A - B'"
+    cmd = (
+        f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A"
+        " - B'"
+    )
     if not ptp_out.exists():
         _log_and_run(cmd)
 
     # Calculate the seasonal mask:
     seasonal_mask_out = a.parent / "seasonal_mask.tif"
-    cmd = f"{base_cmd} -A {ptp_out} --outfile={seasonal_mask_out} --calc='numpy.where(A > {seasonal_ptp_cutoff}, 1, 0)' --NoDataValue=255 --type=Byte"
+    cmd = (
+        f"{base_cmd} -A {ptp_out} --outfile={seasonal_mask_out} --calc='numpy.where(A >"
+        f" {seasonal_ptp_cutoff}, 1, 0)' --NoDataValue=255 --type=Byte"
+    )
     if not seasonal_mask_out.exists():
         _log_and_run(cmd)
 
     # Calculate seasonal_A.tif
     seasonal_A_out = a.parent / "seasonal_A.tif"
-    cmd = f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out} --calc='0.5 * (1 + numpy.sqrt(A))'"
+    cmd = (
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out} --calc='0.5 * (1 +"
+        " numpy.sqrt(A))'"
+    )
     if not seasonal_A_out.exists():
         _log_and_run(cmd)
 
     # Calculate seasonal_B.tif
     seasonal_B_out = a.parent / "seasonal_B.tif"
-    cmd = f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out} --calc='0.5 * (1 - numpy.sqrt(A))'"
+    cmd = (
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out} --calc='0.5 * (1 -"
+        " numpy.sqrt(A))'"
+    )
     if not seasonal_B_out.exists():
         _log_and_run(cmd)
 
     # Get the maximum of tau:
     tau_max_out = a.parent / "tau_max.tif"
-    cmd = f"{base_cmd} -A {' '.join(map(str, tau_files))} --outfile={tau_max_out} --calc='numpy.max(A,axis=0)'"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {' '.join(map(str, tau_files))} --outfile={tau_max_out} --calc='numpy.max(A,axis=0)'"
+    )
     if not tau_max_out.exists():
         _log_and_run(cmd)
 
@@ -496,7 +520,7 @@ def calculate_seasonal_coeffs_files(
     )
 
 
-def rho_to_AB(rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def rho_to_AB(rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
     """Convert rho to A and B parameters."""
     A = 0.5 * (1 + np.sqrt(rho))
     B = 0.5 * (1 - np.sqrt(rho))
