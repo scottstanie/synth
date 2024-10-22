@@ -135,10 +135,11 @@ def create_simulation_data(
 
     if inps.include_summed_truth:
         # Setup summed truth phase files
-        truth_dir = layers_dir / "total"
+        truth_dir = layers_dir / "truth_unwrapped_diffs"
         truth_dir.mkdir(exist_ok=True)
+        d0 = time[0].strftime("%Y%m%d")
         truth_filenames = [
-            truth_dir / f"{date.strftime('%Y%m%d')}.slc.tif" for date in time
+            truth_dir / f"{d0}_{date.strftime('%Y%m%d')}.int.tif" for date in time[1:]
         ]
         truth_profile = slc_profile.copy() | {"dtype": "float32", "nbits": "16"}
         # truth_profile["transform"][0] /= inps.multilook_truth[1]  # x looks
@@ -195,9 +196,11 @@ def create_simulation_data(
                 dst.write(layer, 1, window=window)
 
         if inps.include_summed_truth:
-            for filename, layer in zip(truth_filenames, propagation_phase):
+            for filename, layer in zip(truth_filenames, propagation_phase[1:]):
                 with rio.open(filename, "r+", **truth_profile) as dst:
-                    dst.write(layer, 1, window=window)
+                    # Sign convention for `phi = -4pi * r` flips this:
+                    phase_diff = -1 * (layer - propagation_phase[0])
+                    dst.write(phase_diff, 1, window=window)
 
     return output_slc_filenames
 
