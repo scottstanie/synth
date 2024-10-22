@@ -67,25 +67,27 @@ def create_simulation_data(
     layers_dir.mkdir(exist_ok=True, parents=True)
     output_slc_dir.mkdir(exist_ok=True, parents=True)
 
-    # The global coherence is at 90 meters:
-    upsample_y = int(round(90 / inps.res_y))
-    upsample_x = int(round(90 / inps.res_x))
-    upsample = (upsample_y, upsample_x)
-    logger.info(f"Upsampling by {upsample}")
-    # rasters, profiles = get_global_coherence(
-    #     inps.bounding_box, outdir=outdir, upsample=(upsample_y, upsample_x)
-    # )
-    logger.info("Getting Rhos, Tau rasters")
+    using_global_coh = inps.custom_covariance is None
 
-    coherence_files = global_coherence.get_coherence_model_coeffs(
-        bounds=inps.bounding_box,
-        upsample=upsample,
-        output_dir=layers_dir,
-        rho_transform=inps.rho_transform,
-    )
-    with rio.open(coherence_files[0]) as src:
-        shape2d = src.shape
-        profile = src.profile
+    if using_global_coh:
+        logger.info("Getting Rhos, Tau rasters")
+        # The global coherence is at 90 meters:
+        upsample_y = int(round(90 / inps.res_y))
+        upsample_x = int(round(90 / inps.res_x))
+        upsample = (upsample_y, upsample_x)
+        logger.info(f"Upsampling by {upsample}")
+        coherence_files = global_coherence.get_coherence_model_coeffs(
+            bounds=inps.bounding_box,
+            upsample=upsample,
+            output_dir=layers_dir,
+            rho_transform=inps.rho_transform,
+        )
+        with rio.open(coherence_files[0]) as src:
+            shape2d = src.shape
+            profile = src.profile
+    else:
+        profile = inps.create_profile()
+        shape2d = profile["height"], profile["width"]
 
     shape3d = (inps.num_dates, shape2d[0], shape2d[1])
     logger.info(f"{profile=}")
@@ -131,6 +133,22 @@ def create_simulation_data(
         with rio.open(filename, "w", **slc_profile) as dst:
             pass
 
+    if inps.include_summed_truth:
+        # Setup summed truth phase files
+        truth_dir = layers_dir / "truth_unwrapped_diffs"
+        truth_dir.mkdir(exist_ok=True)
+        d0 = time[0].strftime("%Y%m%d")
+        truth_filenames = [
+            truth_dir / f"{d0}_{date.strftime('%Y%m%d')}.int.tif" for date in time[1:]
+        ]
+        truth_profile = slc_profile.copy() | {"dtype": "float32", "nbits": "16"}
+        # truth_profile["transform"][0] /= inps.multilook_truth[1]  # x looks
+        # truth_profile["transform"][4] /= inps.multilook_truth[0]  # y looks
+
+        for filename in truth_filenames:
+            with rio.open(filename, "w", **truth_profile) as dst:
+                pass
+
     b_iter = list(
         iter_blocks(
             arr_shape=shape2d,
@@ -139,26 +157,34 @@ def create_simulation_data(
     )
     key = random.key(seed)
 
-    logger.info(f"{coherence_files = }")
-    logger.info("Creating coherence matrices for each pixel")
+    logger.info("Simulating correlated noise")
     for rows, cols in tqdm(b_iter):
-        amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask = load_coherence_files(
-            coherence_files, rows, cols
-        )
+        if using_global_coh:
+            logger.info(f"{coherence_files = }")
+            logger.info("Creating coherence matrices for each pixel")
+            amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask = (
+                load_coherence_files(coherence_files, rows, cols)
+            )
+        else:
+            amps = None
         if verbose:
             tqdm.write(f"Simulating correlated noise for {rows}, {cols}")
-        key, subkey = random.split(key)
-        C_arrays = covariance.simulate_coh_stack(
-            time=x_arr,
-            gamma_inf=rhos,
-            # the global coherence raster model assumes gamma0=1
-            gamma0=0.99 * np.ones_like(rhos),
-            Tau0=taus,
-            seasonal_A=seasonal_A,
-            seasonal_B=seasonal_B,
-            seasonal_mask=seasonal_mask,
-        )
         propagation_phase = load_current_phase(files, rows, cols)
+
+        key, subkey = random.split(key)
+        if using_global_coh:
+            C_arrays = covariance.simulate_coh_stack(
+                time=x_arr,
+                gamma_inf=rhos,
+                # the global coherence raster model assumes gamma0=1
+                gamma0=0.99 * np.ones_like(rhos),
+                Tau0=taus,
+                seasonal_A=seasonal_A,
+                seasonal_B=seasonal_B,
+                seasonal_mask=seasonal_mask,
+            )
+        else:
+            C_arrays = inps.custom_covariance.to_array(x_arr)
 
         noisy_stack = covariance.make_noisy_samples_jax(
             subkey, C=C_arrays, defo_stack=propagation_phase, amplitudes=amps
@@ -168,6 +194,13 @@ def create_simulation_data(
         for filename, layer in zip(output_slc_filenames, noisy_stack):
             with rio.open(filename, "r+", **profile) as dst:
                 dst.write(layer, 1, window=window)
+
+        if inps.include_summed_truth:
+            for filename, layer in zip(truth_filenames, propagation_phase[1:]):
+                with rio.open(filename, "r+", **truth_profile) as dst:
+                    # Sign convention for `phi = -4pi * r` flips this:
+                    phase_diff = -1 * (layer - propagation_phase[0])
+                    dst.write(phase_diff, 1, window=window)
 
     return output_slc_filenames
 

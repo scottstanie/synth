@@ -1,9 +1,9 @@
 import argparse
 import logging
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Optional
 
-import h5py
 import numpy as np
 import rasterio as rio
 from rasterio.windows import Window
@@ -11,7 +11,7 @@ from tqdm.auto import tqdm
 
 from ._blocks import iter_blocks
 from ._types import PathOrStr
-from .utils import _setup_logging, load_current_phase
+from .utils import _setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,43 +24,56 @@ OUTPUT_PROFILE_DEFAULTS = {
     "compress": "lzw",
     "nbits": "16",
 }
-DEFAULT_TRUTH_FILES = {
-    "deformation": Path("deformation.h5"),
-    "ramps": Path("phase_ramps.h5"),
-    "turbulence": Path("turbulence.h5"),
-}
 BLOCK_SHAPE = (512, 512)
 
 
-def compare_to_deformation(
-    unw_files: Iterable[PathOrStr],
-    conncomp_files: Iterable[PathOrStr],
-    truth_files: Mapping[str, PathOrStr] = DEFAULT_TRUTH_FILES,
+def compare_phase(
+    phase_files: Iterable[PathOrStr],
+    truth_unwrapped_diffs_dir: PathOrStr,
     output_dir: Path = Path("differences"),
+    is_wrapped: bool = False,
+    temporal_coherence_file: Optional[PathOrStr] = None,
+    temporal_coherence_threshold: float = 0.7,
+    conncomp_files: Optional[Iterable[PathOrStr]] = None,
     exclude_zero_conncomps: bool = True,
+    block_shape: tuple[int, int] = BLOCK_SHAPE,
 ) -> list[Path]:
-    """Compare unwrapped interferograms to synthetic deformation.
+    """Compare unwrapped or wrapped interferograms to synthetic deformation.
 
-    This function compares a set of unwrapped interferograms to synthetic deformation
-    data, optionally excluding areas with zero connected components, and outputs the
-    differences as GeoTIFF files.
+    This function compares a set of interferograms to synthetic deformation
+    data, optionally excluding areas with zero connected components or
+    low temporal coherence, and outputs the differences as GeoTIFF files.
 
     Parameters
     ----------
-    unw_files : Iterable[PathOrStr]
-        An iterable of paths to unwrapped interferogram files.
-    conncomp_files : Iterable[PathOrStr]
-        An iterable of paths to connected component files corresponding to the
-        unwrapped interferograms.
-    truth_files : dict[str, PathOrStr], optional
-        Path to the HDF5 file containing synthetic deformation data.
-        Default is Path("input_layers.h5").
+    phase_files : Iterable[PathOrStr]
+        An iterable of paths to wrapped, or unwrapped, interferogram files.
+    truth_unwrapped_diffs_dir: PathOrStr
+        Directory containing the summed propagation phase to use as truth comparison.
     output_dir : Path, optional
         Directory where the difference files will be saved.
         Default is Path("differences").
+    is_wrapped : bool, optional
+        Indicate if the input files are wrapped phase. Default is False.
+    temporal_coherence_file: Optional[PathOrStr], optional
+        Path to a temporal coherence file, used to ignore portions of the results with
+        low coherence. Default is None.
+    temporal_coherence_threshold : float, optional
+        If `temporal_coherence_file` is passed, the threshold used to ignore
+        low coherence areas.
+        Default is 0.7.
+    conncomp_files : Optional[Iterable[PathOrStr]], optional
+        An iterable of paths to connected component files corresponding to the
+        unwrapped interferograms, if comparing unwrapped results. Default is None.
     exclude_zero_conncomps : bool, optional
         If True, areas with connected component == 0 are excluded from the comparison.
         Default is True.
+    block_shape : tuple[int, int]
+        Size of blocks to load during comparison.
+        Default is (512, 512)
+    reference_idx : int
+        Index of reference phase. Each layer will subtract this index.
+        For single reference interferograms, referenced to first date, this is 0.
 
     Returns
     -------
@@ -70,86 +83,81 @@ def compare_to_deformation(
     Raises
     ------
     ValueError
-        If the `len(unw_files)` doesn't match `len(conncomp_files)`
-        If the `len(unw_files)` isn't one less than the number of deformation layers
+        If the number of phase files doesn't match the number of truth phase layers.
 
     """
-    unw_file_list = list(unw_files)
-    conncomp_file_list = list(conncomp_files)
+    phase_file_list = list(phase_files)
 
-    if len(unw_file_list) != len(conncomp_file_list):
-        raise ValueError(f"{len(unw_file_list) = }, but {len(conncomp_file_list) = }")
-
-    with rio.open(unw_file_list[0]) as src:
+    with rio.open(phase_file_list[0]) as src:
         shape2d = src.shape
         profile = src.profile | OUTPUT_PROFILE_DEFAULTS
 
-    # dolphin maybe have down striding, so the full deformation is larger
-    row_strides, col_strides = _get_downsample_factor(
-        shape2d, truth_files["deformation"]
-    )
+    truth_files = sorted(Path(truth_unwrapped_diffs_dir).glob("2*.tif"))
+    row_strides, col_strides = _get_downsample_factor(shape2d, truth_files[0])
+
     output_dir.mkdir(exist_ok=True, parents=True)
-    output_files = [output_dir / f"difference_{Path(f).name}" for f in unw_file_list]
-    # Set up all output files
+    output_files = [output_dir / f"difference_{Path(f).name}" for f in phase_file_list]
+
     for filename in output_files:
         with rio.open(filename, "w", **profile) as dst:
             pass
 
-    # TODO: get better organization using the filenames/dates to
-    # ensure we difference things correctly
-    b_iter = list(iter_blocks(arr_shape=shape2d, block_shape=BLOCK_SHAPE))
+    b_iter = list(iter_blocks(arr_shape=shape2d, block_shape=block_shape))
+
     for rows, cols in tqdm(b_iter):
-        # Mape the output (strided) slice into the full resolution shape
         full_rows = slice(
             rows.start * row_strides, rows.stop * row_strides, row_strides
         )
         full_cols = slice(
             cols.start * col_strides, cols.stop * col_strides, col_strides
         )
-
-        logger.debug("Loading full res data...")
-        truth_phase = load_current_phase(truth_files, rows=full_rows, cols=full_cols)
-        # Form the single-reference interferograms from the truth phase
-        truth_phase_diff = truth_phase[1:] - truth_phase[[0]]
-
-        if len(unw_file_list) != (truth_phase_diff.shape[0]):
-            raise ValueError(
-                f"{len(unw_file_list) = } should be {truth_phase.shape[0] = } - 1"
-            )
+        full_window = Window.from_slices(full_rows, full_cols)
 
         window = Window.from_slices(rows, cols)
 
-        for cur_truth, in_f, out_f, cc_f in zip(
-            truth_phase_diff, unw_file_list, output_files, conncomp_file_list
+        # Load temporal coherence mask if provided
+        if temporal_coherence_file:
+            with rio.open(temporal_coherence_file) as src:
+                temp_coh = src.read(1, window=window)
+            coh_mask = temp_coh < temporal_coherence_threshold
+
+        for cur_truth_file, compare_file, out_file in zip(
+            truth_files, phase_file_list, output_files
         ):
-            with rio.open(in_f) as src:
-                cur_unw = src.read(1, window=window)
+            with rio.open(compare_file) as src:
+                cur_phase = src.read(1, window=window)
+            with rio.open(cur_truth_file) as src:
+                cur_truth = src.read(1, window=full_window, out_shape=cur_phase.shape)
 
-            # difference = cur_unw - cur_truth
-            # TODO: Currently, the "truth" has sign flipped, so must be added.
-            # The probable fix is in the phase generation in `covariance.py`, maybe
-            # `signal_cov = _get_diffs(defo_stack)`
-            difference = cur_unw + cur_truth
+            if is_wrapped:
+                if np.iscomplexobj(cur_phase):
+                    cur_phase = np.angle(cur_phase)
+                # cur_truth is already float
+                assert not np.iscomplexobj(cur_truth)
+                difference = np.angle(np.exp(1j * cur_phase) * np.exp(-1j * cur_truth))
+            else:
+                difference = cur_phase - cur_truth
+                difference -= difference.mean()
 
-            # TODO: Need a spatial reference point to compare the unwrapped to truth?
-            # For now, we just subtract the mean
-            difference -= difference.mean()
+            # Apply masks
+            if temporal_coherence_file:
+                difference[coh_mask] = np.nan
 
-            if exclude_zero_conncomps:
+            if conncomp_files and exclude_zero_conncomps:
+                cc_f = next(iter(conncomp_files))
                 with rio.open(cc_f) as src:
-                    # TODO: this should use the `src.nodatavals` or `masked=True`
                     mask = src.read(1, window=window) == 0
                 difference[mask] = np.nan
 
-            with rio.open(out_f, "r+") as dst:
+            with rio.open(out_file, "r+") as dst:
                 dst.write(difference, indexes=1, window=window)
 
     return output_files
 
 
 def _get_downsample_factor(downsampled_shape, full_res_file):
-    with h5py.File(full_res_file) as hf:
-        full_shape = hf["data"].shape
+    with rio.open(full_res_file) as src:
+        full_shape = src.shape
 
     row_strides = int(round(full_shape[-2] / downsampled_shape[0]))
     col_strides = int(round(full_shape[-1] / downsampled_shape[1]))
@@ -158,31 +166,53 @@ def _get_downsample_factor(downsampled_shape, full_res_file):
 
 def _get_cli_args():
     parser = argparse.ArgumentParser(
-        description="Compare unwrapped interferograms to synthetic deformation."
+        description="Compare phase files to synthetic deformation."
     )
     parser.add_argument(
-        "--unw-files",
+        "-t",
+        "--truth",
+        "--truth-unwrapped-diffs-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Path to directory containing the summed propagation phase created during"
+            " simulation."
+        ),
+    )
+    parser.add_argument(
+        "--phase-files",
         nargs="+",
         type=Path,
-        help="Paths to unwrapped interferogram files.",
+        required=True,
+        help="Paths to phase files (wrapped or unwrapped) to compare to truth.",
     )
     parser.add_argument(
-        "--conncomp-files",
-        nargs="+",
-        type=Path,
-        help="Paths to connected component files",
-    )
-    parser.add_argument(
-        "--input-layers-dir",
-        type=Path,
-        default=Path("input_layers/"),
-        help="Path to the HDF5 files containing synthetic deformation data",
+        "--wrapped",
+        action="store_true",
+        help="Indicate if the input files are wrapped phase.",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("differences"),
         help="Directory where the difference files will be saved",
+    )
+    parser.add_argument(
+        "--conncomp-files",
+        nargs="+",
+        type=Path,
+        help="Paths to connected component files (for unwrapped phase only)",
+    )
+    parser.add_argument(
+        "--temporal-coherence-file",
+        type=Path,
+        help="Path to temporal coherence file",
+    )
+    parser.add_argument(
+        "--temporal-coherence-threshold",
+        type=float,
+        default=0.7,
+        help="Threshold for temporal coherence masking",
     )
     parser.add_argument(
         "--include-zero-conncomps",
@@ -194,17 +224,19 @@ def _get_cli_args():
 
 
 def main():
-    """Run the comparison analysis on a set of output files."""
+    """Run the comparison analysis on a set of phase files."""
     _setup_logging()
 
     args = _get_cli_args()
-    truth_files = {k: args.input_layers_dir / v for k, v in DEFAULT_TRUTH_FILES.items()}
 
-    output_files = compare_to_deformation(
-        unw_files=args.unw_files,
-        conncomp_files=args.conncomp_files,
-        truth_files=truth_files,
+    output_files = compare_phase(
+        phase_files=args.phase_files,
+        truth_unwrapped_diffs_dir=args.truth,
         output_dir=args.output_dir,
+        is_wrapped=args.wrapped,
+        temporal_coherence_file=args.temporal_coherence_file,
+        temporal_coherence_threshold=args.temporal_coherence_threshold,
+        conncomp_files=args.conncomp_files if not args.wrapped else None,
         exclude_zero_conncomps=args.exclude_zero_conncomps,
     )
 

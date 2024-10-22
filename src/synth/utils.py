@@ -1,9 +1,12 @@
 import logging
 from collections.abc import Callable, Mapping
 from concurrent.futures import Executor, Future
+from functools import partial
 
 import h5py
+import jax.numpy as jnp
 import numpy as np
+from jax import jit, lax
 
 from ._types import P, PathOrStr, T
 
@@ -34,7 +37,8 @@ def load_current_phase(
 
     Returns
     -------
-    np.ndarray: 3D array representing the summed phase data for the specified block.
+    np.ndarray: 3D Float32 array representing the summed true input phase data
+    for the specified block.
 
     """
     summed_phase = None
@@ -153,3 +157,30 @@ class DummyProcessPoolExecutor(Executor):
 
     def shutdown(self, wait: bool = True, cancel_futures: bool = True):  # noqa: D102
         pass
+
+
+@partial(jit, static_argnums=(1, 2, 3))
+def take_looks(image, row_looks, col_looks, average=True):
+    # Ensure the image has a channel/batch dimension (assuming grayscale image)
+    # Add a (batch, ..., channel) dimensions to make NHWC
+    image = image[jnp.newaxis, ..., jnp.newaxis]
+
+    # Create a kernel filled with ones
+    # Kernel shape: HWIO (height, width, input_channels, output_channels)
+    kernel = jnp.ones((row_looks, col_looks, 1, 1), dtype=image.dtype)
+
+    # With each window, we're jumping over by the same number of pixels
+    strides = (row_looks, col_looks)
+    result = lax.conv_general_dilated(
+        image,
+        kernel,
+        window_strides=strides,
+        padding="SAME",
+        dimension_numbers=("NHWC", "HWIO", "NHWC"),
+    )
+
+    # Average if required
+    if average:
+        result /= row_looks * col_looks
+
+    return result.squeeze()

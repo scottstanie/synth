@@ -1,13 +1,64 @@
+import math
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Optional
 
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import jax.numpy as jnp
+from jax import Array
+from numpy.typing import ArrayLike
+from pydantic import BaseModel, Field
+from pydantic_settings import SettingsConfigDict
 
 from ._types import Bbox, RhoOption
 
 
-class SimulationInputs(BaseSettings):
+class CustomCoherence(BaseModel):
+    """Class for one custom coherence matrix to use in simulations."""
+
+    gamma_inf: float = Field(
+        ..., ge=0.0, le=1.0, description="Asymptotic coherence value"
+    )
+    tau0: float = Field(
+        ..., ge=0, description="Coherence decay time constant (in days)"
+    )
+    gamma0: float = Field(1.0, ge=0.0, le=1.0, description="Initial coherence value")
+    seasonal_A: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Seasonal A coefficient"
+    )
+    seasonal_B: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Seasonal B coefficient"
+    )
+
+    def to_array(self, time: ArrayLike) -> Array:
+        """Create the complex coherence matrix as a JAX Array."""
+        num_time = time.shape[0]
+        temp_baselines = jnp.abs(time[None, :] - time[:, None])
+        gamma = (self.gamma0 - self.gamma_inf) * jnp.exp(
+            -temp_baselines / self.tau0
+        ) + self.gamma_inf
+        phase_term = jnp.exp(1j * 0)
+
+        if (A := self.seasonal_A) is not None and (B := self.seasonal_B) is not None:
+            seasonal_factor = (
+                A + B * jnp.cos(2 * jnp.pi * temp_baselines / 365.25)
+            ) ** 2
+            # Ensure it is a valid coherence multiplier
+            seasonal_factor = jnp.clip(seasonal_factor, 0, 1)
+            gamma = gamma * seasonal_factor
+
+        C = gamma * phase_term
+        rl, cl = jnp.tril_indices(num_time, k=-1)
+        C = C.at[rl, cl].set(jnp.conj(C.T)[rl, cl])
+
+        # Reset the diagonals of each pixel to 1
+        rs, cs = jnp.diag_indices(num_time)
+        C = C.at[rs, cs].set(1.0)
+
+        return C
+
+
+# class SimulationInputs(BaseSettings):
+class SimulationInputs(BaseModel):
     """Create parameters describing simulation data to generate."""
 
     model_config = SettingsConfigDict(cli_parse_args=True, cli_prog_name="synth")
@@ -29,6 +80,7 @@ class SimulationInputs(BaseSettings):
     max_ramp_amplitude: float = 1.0
     include_stratified: bool = False
     rho_transform: RhoOption = RhoOption.SHRUNK
+    include_summed_truth: bool = True
 
     block_shape: tuple[int, int] = Field(
         (128, 128),
@@ -38,3 +90,61 @@ class SimulationInputs(BaseSettings):
             " `(*block_shape, inps.num_dates, inps.num_dates)`"
         ),
     )
+
+    custom_covariance: Optional[CustomCoherence] = Field(
+        None,
+        description=(
+            "Custom covariance parameters to use if not using the global dataset"
+        ),
+    )
+
+    def create_profile(self) -> dict[str, Any]:
+        """Create a rasterio profile based on SimulationInputs.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary containing the profile information.
+
+        """
+        from pyproj import Geod
+
+        # Extract bounding box
+        left, bottom, right, top = (
+            self.bounding_box.left,
+            self.bounding_box.bottom,
+            self.bounding_box.right,
+            self.bounding_box.top,
+        )
+
+        # Calculate width and height in meters
+        geod = Geod(ellps="WGS84")
+        _, _, width_m = geod.inv(left, (top + bottom) / 2, right, (top + bottom) / 2)
+        _, _, height_m = geod.inv((left + right) / 2, bottom, (left + right) / 2, top)
+
+        # Calculate width and height in pixels
+        width = math.ceil(width_m / self.res_x)
+        height = math.ceil(height_m / self.res_y)
+
+        # Calculate actual resolution
+        res_x = (right - left) / width
+        res_y = (top - bottom) / height
+
+        profile = {
+            "height": height,
+            "width": width,
+            "count": 1,
+            "compress": "lzw",
+            # "res": [res_x, res_y],
+            "transform": [res_x, 0.0, left, 0.0, -res_y, top, 0.0, 0.0, 1.0],
+            "crs": "EPSG:4326",
+            "driver": "GTiff",
+            "dtype": "complex64",
+            "interleave": "band",
+            "nodata": 0.0,
+            "tiled": True,
+            "blockxsize": 256,
+            "blockysize": 256,
+        }
+
+        return profile
