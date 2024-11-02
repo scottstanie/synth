@@ -122,7 +122,7 @@ def compare_phase(
             coh_mask = temp_coh < temporal_coherence_threshold
 
         for cur_truth_file, compare_file, out_file in zip(
-            truth_files, phase_file_list, output_files
+            truth_files, phase_file_list, output_files, strict=True
         ):
             with rio.open(compare_file) as src:
                 cur_phase = src.read(1, window=window)
@@ -131,7 +131,9 @@ def compare_phase(
 
             if is_wrapped:
                 if np.iscomplexobj(cur_phase):
-                    cur_phase = np.angle(cur_phase)
+                    cur_phase = np.angle(cur_phase - cur_phase[2, 2])
+                else:
+                    cur_phase = cur_phase - cur_phase[2, 2]
                 # cur_truth is already float
                 assert not np.iscomplexobj(cur_truth)
                 difference = np.angle(np.exp(1j * cur_phase) * np.exp(-1j * cur_truth))

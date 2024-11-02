@@ -82,6 +82,7 @@ def create_simulation_data(
             output_dir=layers_dir,
             rho_transform=inps.rho_transform,
         )
+        logger.info(f"{coherence_files = }")
         with rio.open(coherence_files[0]) as src:
             shape2d = src.shape
             profile = src.profile
@@ -160,8 +161,6 @@ def create_simulation_data(
     logger.info("Simulating correlated noise")
     for rows, cols in tqdm(b_iter):
         if using_global_coh:
-            logger.info(f"{coherence_files = }")
-            logger.info("Creating coherence matrices for each pixel")
             amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask = (
                 load_coherence_files(coherence_files, rows, cols)
             )
