@@ -32,6 +32,7 @@ def compare_phase(
     truth_unwrapped_diffs_dir: PathOrStr,
     output_dir: Path = Path("differences"),
     is_wrapped: bool = False,
+    flip_sign: bool = False,
     temporal_coherence_file: Optional[PathOrStr] = None,
     temporal_coherence_threshold: float = 0.7,
     conncomp_files: Optional[Iterable[PathOrStr]] = None,
@@ -55,6 +56,9 @@ def compare_phase(
         Default is Path("differences").
     is_wrapped : bool, optional
         Indicate if the input files are wrapped phase. Default is False.
+    flip_sign : bool, optional
+        Flag to flip the sign of `phase_files`. Used for comparing `timeseries/`,
+        where the sign has been flipped from `unwrapped/`
     temporal_coherence_file: Optional[PathOrStr], optional
         Path to a temporal coherence file, used to ignore portions of the results with
         low coherence. Default is None.
@@ -138,7 +142,8 @@ def compare_phase(
                 assert not np.iscomplexobj(cur_truth)
                 difference = np.angle(np.exp(1j * cur_phase) * np.exp(-1j * cur_truth))
             else:
-                difference = cur_phase - cur_truth
+                k = -1 if flip_sign else 1.0
+                difference = k * cur_phase - cur_truth
                 difference -= difference.mean()
 
             # Apply masks
@@ -194,6 +199,14 @@ def _get_cli_args():
         help="Indicate if the input files are wrapped phase.",
     )
     parser.add_argument(
+        "--flip-sign",
+        action="store_true",
+        help=(
+            "Flag to flip the sign of `phase_files`. Used for comparing `timeseries/`,"
+            " where the sign has been flipped from `unwrapped/`"
+        ),
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("differences"),
@@ -236,6 +249,7 @@ def main():
         truth_unwrapped_diffs_dir=args.truth,
         output_dir=args.output_dir,
         is_wrapped=args.wrapped,
+        flip_sign=args.flip_sign,
         temporal_coherence_file=args.temporal_coherence_file,
         temporal_coherence_threshold=args.temporal_coherence_threshold,
         conncomp_files=args.conncomp_files if not args.wrapped else None,
