@@ -97,8 +97,37 @@ def compare_phase(
         profile = src.profile | OUTPUT_PROFILE_DEFAULTS
 
     truth_files = sorted(Path(truth_unwrapped_diffs_dir).glob("2*.tif"))
-    row_strides, col_strides = _get_downsample_factor(shape2d, truth_files[0])
+    strides = _get_downsample_factor(shape2d, truth_files[0])
+    row_strides, col_strides = strides
 
+    ref_vals = []
+
+    # Check if we're passing interferograms, or the linked-phase rasters
+    # one fewer interferogram than phase-linked slc
+    if (
+        str(phase_file_list[0]).endswith(".slc.tif")
+        and len(phase_file_list) == len(truth_files) + 1
+    ):
+        phase_file_list = phase_file_list[1:]  # Skip the empty first date
+
+    for est_file, truth in zip(phase_file_list, truth_files, strict=True):
+        with rio.open(est_file) as src_est, rio.open(truth) as src_true:
+            rows, cols = slice(10, 15), slice(10, 15)
+            window = Window.from_slices(rows, cols)
+            val1 = src_est.read(1, window=window, masked=True)
+            # val1 = src_est.read(1, masked=True)
+
+            full_window = _get_full_window(rows, cols, strides)
+            # print(strides)
+            # print(window)
+            # print(full_window)
+            val2 = src_true.read(
+                1, window=full_window, masked=True, out_shape=val1.shape
+            )
+            # val2 = src_true.read(1, masked=True)
+            ref_vals.append(np.nanmean(val2 - val1))
+
+    # Setup all empty output rasters
     output_dir.mkdir(exist_ok=True, parents=True)
     output_files = [output_dir / f"difference_{Path(f).name}" for f in phase_file_list]
 
@@ -107,17 +136,9 @@ def compare_phase(
             pass
 
     b_iter = list(iter_blocks(arr_shape=shape2d, block_shape=block_shape))
-
     for rows, cols in tqdm(b_iter):
-        full_rows = slice(
-            rows.start * row_strides, rows.stop * row_strides, row_strides
-        )
-        full_cols = slice(
-            cols.start * col_strides, cols.stop * col_strides, col_strides
-        )
-        full_window = Window.from_slices(full_rows, full_cols)
-
         window = Window.from_slices(rows, cols)
+        full_window = _get_full_window(rows, cols, strides)
 
         # Load temporal coherence mask if provided
         if temporal_coherence_file:
@@ -125,25 +146,27 @@ def compare_phase(
                 temp_coh = src.read(1, window=window)
             coh_mask = temp_coh < temporal_coherence_threshold
 
-        for cur_truth_file, compare_file, out_file in zip(
-            truth_files, phase_file_list, output_files, strict=True
+        for cur_truth_file, compare_file, out_file, ref_val in zip(
+            truth_files, phase_file_list, output_files, ref_vals, strict=True
         ):
             with rio.open(compare_file) as src:
                 cur_phase = src.read(1, window=window)
             with rio.open(cur_truth_file) as src:
                 cur_truth = src.read(1, window=full_window, out_shape=cur_phase.shape)
 
+            k = -1 if flip_sign else 1.0
             if is_wrapped:
                 if np.iscomplexobj(cur_phase):
-                    cur_phase = np.angle(cur_phase - cur_phase[2, 2])
+                    cur_phase = np.angle(cur_phase - ref_val)
                 else:
-                    cur_phase = cur_phase - cur_phase[2, 2]
+                    cur_phase = cur_phase - ref_val
                 # cur_truth is already float
                 assert not np.iscomplexobj(cur_truth)
-                difference = np.angle(np.exp(1j * cur_phase) * np.exp(-1j * cur_truth))
+                difference = np.angle(
+                    np.exp(1j * k * cur_phase) * np.exp(-1j * cur_truth)
+                )
             else:
-                k = -1 if flip_sign else 1.0
-                difference = k * cur_phase - cur_truth
+                difference = k * (cur_phase - ref_val) - cur_truth
                 difference -= difference.mean()
 
             # Apply masks
@@ -171,9 +194,17 @@ def _get_downsample_factor(downsampled_shape, full_res_file):
     return row_strides, col_strides
 
 
+def _get_full_window(rows: slice, cols: slice, strides: tuple[int, int]):
+    row_strides, col_strides = strides
+    full_rows = slice(rows.start * row_strides, rows.stop * row_strides, row_strides)
+    full_cols = slice(cols.start * col_strides, cols.stop * col_strides, col_strides)
+    return Window.from_slices(full_rows, full_cols)
+
+
 def _get_cli_args():
     parser = argparse.ArgumentParser(
-        description="Compare phase files to synthetic deformation."
+        description="Compare phase files to synthetic deformation.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "-t",
@@ -256,9 +287,10 @@ def main():
         exclude_zero_conncomps=args.exclude_zero_conncomps,
     )
 
-    logger.info("Comparison completed. Output files:")
+    logger.info(f"Comparison completed. {len(output_files)} output files processed.")
+    logger.debug("Comparison completed.")
     for file in output_files:
-        logger.info(f"  {file}")
+        logger.debug(f"  {file}")
 
 
 if __name__ == "__main__":

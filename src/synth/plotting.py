@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from scipy.stats import gaussian_kde
 from matplotlib.colors import LogNorm
+from scipy.stats import gaussian_kde
 
 
 def process_coherence_data(directory: str | Path) -> pd.DataFrame:
@@ -37,6 +37,7 @@ def process_coherence_data(directory: str | Path) -> pd.DataFrame:
     3. Combines with temporal coherence and similarity metrics
 
     The returned DataFrame has one row per pixel.
+
     """
     from dolphin import io
 
@@ -224,6 +225,7 @@ def plot_boxplot(
     -------
     tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]
         Figure and axes objects
+
     """
     # Filter out problematic values
     mask = (df["temporal_coherence"] >= min_coherence) & (df["rmse"] >= min_rmse)
@@ -261,7 +263,7 @@ def plot_boxplot(
     bp = ax.boxplot(
         [np.array([]) for _ in range(len(bin_labels))],  # Empty data
         positions=range(len(bin_labels)),
-        medianprops=dict(color="red"),
+        medianprops={"color": "red"},
         showfliers=False,
     )
 
@@ -385,6 +387,7 @@ def plot_temporal_coherence_vs_rmse(df):
     0-0.2, 0.2-0.4, 0.4-0.6, 0.6-0.8, and 0.8-1.0
 
     The visualization uses seaborn for enhanced statistical plotting.
+
     """
     # Create bins for temporal coherence
     df["coherence_bin"] = pd.cut(
@@ -454,6 +457,7 @@ def similarity_vs_temporal_coherence(df):
     The hexbin plots use logarithmic binning and a viridis colormap to show
     density of points. The similarity plot is constrained to the range [-0.1, 1.1]
     for better visualization.
+
     """
     # Set up the matplotlib figure
     fig, axes = plt.subplots(1, 2, figsize=(9, 6), squeeze=False)
