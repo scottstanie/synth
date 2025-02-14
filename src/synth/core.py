@@ -69,7 +69,7 @@ def create_simulation_data(
 
     using_global_coh = inps.custom_covariance is None
 
-    if using_global_coh:
+    if inps.include_decorrelation and using_global_coh:
         logger.info("Getting Rhos, Tau rasters")
         # The global coherence is at 90 meters:
         upsample_y = int(round(90 / inps.res_y))

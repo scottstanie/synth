@@ -213,7 +213,7 @@ def model_3param(t: np.ndarray, rho_0: float, rho_inf: float, tau: float) -> np.
 def fit_model(
     T: ArrayLike, gamma: ArrayLike, num_params: int = 2, plot: bool = True, ax=None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Fit the model to the data."""
+    """Fit the data using model rho(t) = (rho_0 - rho_inf) * exp(-t / tau) + rho_inf."""
     from scipy.optimize import curve_fit
 
     if num_params == 2:
@@ -429,7 +429,6 @@ def calculate_seasonal_coeffs_files(
         _log_and_run(cmd)
 
     # Like the example  https://gdal.org/programs/gdal_calc.html
-    # gdal_calc -A input1.tif input2.tif input3.tif --outfile=result.tif --calc="numpy.max(A,axis=0)"
     a, b, c, d = rho_files
     # Get the minimum of rho:
     rho_min_out = a.parent / "rho_min.tif"
@@ -478,8 +477,8 @@ def calculate_seasonal_coeffs_files(
     # Calculate seasonal_A.tif
     seasonal_A_out = a.parent / "seasonal_A.tif"
     cmd = (
-        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out} --calc='0.5 * (1 +"
-        " numpy.sqrt(A))'"
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out}"
+        " --calc='0.5 * (1 + numpy.sqrt(A))'"
     )
     if not seasonal_A_out.exists():
         _log_and_run(cmd)
@@ -487,8 +486,8 @@ def calculate_seasonal_coeffs_files(
     # Calculate seasonal_B.tif
     seasonal_B_out = a.parent / "seasonal_B.tif"
     cmd = (
-        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out} --calc='0.5 * (1 -"
-        " numpy.sqrt(A))'"
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out}"
+        " --calc='0.5 * (1 - numpy.sqrt(A))'"
     )
     if not seasonal_B_out.exists():
         _log_and_run(cmd)
@@ -520,8 +519,8 @@ def calculate_seasonal_coeffs_files(
     )
 
 
-def rho_to_AB(rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
-    """Convert rho to A and B parameters."""
-    A = 0.5 * (1 + np.sqrt(rho))
-    B = 0.5 * (1 - np.sqrt(rho))
+def rho_to_AB(rho_inf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
+    """Convert long-term coherence value to seasonal A and B parameters."""
+    A = 0.5 * (1 + np.sqrt(rho_inf))
+    B = 0.5 * (1 - np.sqrt(rho_inf))
     return A, B
