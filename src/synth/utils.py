@@ -7,6 +7,7 @@ import h5py
 import jax.numpy as jnp
 import numpy as np
 from jax import jit, lax
+from jax.typing import ArrayLike
 
 from ._types import P, PathOrStr, T
 
@@ -160,7 +161,7 @@ class DummyProcessPoolExecutor(Executor):
 
 
 @partial(jit, static_argnums=(1, 2, 3))
-def take_looks(image, row_looks, col_looks, average=True):
+def take_looks(image: ArrayLike, row_looks: int, col_looks: int, average: bool = True):
     # Ensure the image has a channel/batch dimension (assuming grayscale image)
     # Add a (batch, ..., channel) dimensions to make NHWC
     image = image[jnp.newaxis, ..., jnp.newaxis]
