@@ -324,7 +324,7 @@ def get_coherence_model_coeffs(
     (
         amp_mean_file,
         rho_file,
-        tau_max_file,
+        tau_mean_file,
         seasonal_A_file,
         seasonal_B_file,
         seasonal_mask_file,
@@ -338,25 +338,25 @@ def get_coherence_model_coeffs(
     return (
         amp_mean_file,
         rho_file,
-        tau_max_file,
+        tau_mean_file,
         seasonal_A_file,
         seasonal_B_file,
         seasonal_mask_file,
     )
     # rho_min = np.max(rho_stack, axis=0)
-    # tau_max = tau_stack.max(axis=0)
+    # tau_mean = tau_stack.max(axis=0)
     # amp_mean = np.mean(amp_stack, axis=0)
     # save_coherence_data(
     #     output_dir / "global_coherence_data.h5",
     #     amp_mean,
     #     rho_min,
-    #     tau_max,
+    #     tau_mean,
     #     A,
     #     B,
     #     seasonal_mask,
     #     profile,
     # )
-    # return amp_mean, rho_min, tau_max, A, B, seasonal_mask, profile
+    # return amp_mean, rho_min, tau_mean, A, B, seasonal_mask, profile
 
 
 def save_coherence_data(
@@ -492,13 +492,15 @@ def calculate_seasonal_coeffs_files(
     if not seasonal_B_out.exists():
         _log_and_run(cmd)
 
-    # Get the maximum of tau:
-    tau_max_out = a.parent / "tau_max.tif"
+    # Get the mean of tau:
+    # using "max" would lead to high coherence, less noise.
+    # Likewise, the minimum of tau would lead to quicker coherence drop (more noise)
+    tau_mean_out = a.parent / "tau_mean.tif"
     cmd = (
         f"{base_cmd} -A"
-        f" {' '.join(map(str, tau_files))} --outfile={tau_max_out} --calc='numpy.max(A,axis=0)'"
+        f" {' '.join(map(str, tau_files))} --outfile={tau_mean_out} --calc='numpy.mean(A,axis=0)'"
     )
-    if not tau_max_out.exists():
+    if not tau_mean_out.exists():
         _log_and_run(cmd)
 
     if rho_transform == RhoOption.SHRUNK:
@@ -512,7 +514,7 @@ def calculate_seasonal_coeffs_files(
     return (
         amp_mean_out,
         rho_out,
-        tau_max_out,
+        tau_mean_out,
         seasonal_A_out,
         seasonal_B_out,
         seasonal_mask_out,
