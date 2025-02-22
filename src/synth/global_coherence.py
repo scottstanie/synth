@@ -387,9 +387,32 @@ def save_coherence_data(
 def calculate_seasonal_coeffs(
     rho_stack: np.ndarray, seasonal_ptp_cutoff: float = 0.5
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r"""Calculate the seasonal A and B parameters from a stack of rho files.
+
+    For pixels with more variation than `seasonal_ptp_cutoff`, model the decorrelation
+    as seasonal instead of exponential decay
+
+    The Equation for the A, B parameters is
+
+    $$
+    \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right)
+        \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
+    $$
+
+    Parameters
+    ----------
+    rho_stack : np.ndarray
+        Stack of rho files, shape (num_time, rows, cols)
+    seasonal_ptp_cutoff : float
+        Cutoff for defining seasonal pixels. Default is 0.5.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        Tuple of (seasonal A, seasonal B, seasonal mask)
+
+    """
     rho_ptp = np.ptp(rho_stack, axis=0)
-    # For pixels where there's more than `seasonal_ptp_cutoff`, we'll model the decorrelation
-    # as seasonal instead of exponential decay
     seasonal_pixels = rho_ptp > seasonal_ptp_cutoff
     rho_min = rho_stack.min(axis=0)
     # A, B: Where theres big variation, we use A, B for seasonal simulations
@@ -448,20 +471,26 @@ def calculate_seasonal_coeffs_files(
     if not rho_max_out.exists():
         _log_and_run(cmd)
 
-    # Get a scaled, clipped version of rho to make the simulations noisier
+    # Get the mean of rho:
+    rho_mean_out = a.parent / "rho_mean.tif"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {a} {b} {c} {d} --outfile={rho_mean_out} --calc='numpy.mean(A,axis=0)'"
+    )
+    if not rho_mean_out.exists():
+        _log_and_run(cmd)
+
+    # Get a scaled, clipped version of the mean of rho to make the simulations noisier
     rho_shrunk_out = a.parent / "rho_shrunk.tif"
     # shrink down all long term coherences, but extra shrink the lower starting ones
     calc_str = "numpy.where(A < 0.2, A**4, A**2)"
-    cmd = f"{base_cmd} -A {rho_min_out} --outfile={rho_shrunk_out} --calc='{calc_str}'"
+    cmd = f"{base_cmd} -A {rho_mean_out} --outfile={rho_shrunk_out} --calc='{calc_str}'"
     if not rho_shrunk_out.exists():
         _log_and_run(cmd)
 
     # Get the peak-to-peak raster:
     ptp_out = a.parent / "rho_ptp.tif"
-    cmd = (
-        f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A"
-        " - B'"
-    )
+    cmd = f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A - B'"  # noqa: E501
     if not ptp_out.exists():
         _log_and_run(cmd)
 
@@ -509,6 +538,8 @@ def calculate_seasonal_coeffs_files(
         rho_out = rho_min_out
     elif rho_transform == RhoOption.MAX:
         rho_out = rho_max_out
+    elif rho_transform == RhoOption.MEAN:
+        rho_out = rho_mean_out
     else:
         raise ValueError(f"Unknown option for {rho_transform=}")
     return (
