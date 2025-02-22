@@ -213,7 +213,7 @@ def model_3param(t: np.ndarray, rho_0: float, rho_inf: float, tau: float) -> np.
 def fit_model(
     T: ArrayLike, gamma: ArrayLike, num_params: int = 2, plot: bool = True, ax=None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Fit the model to the data."""
+    """Fit the data using model rho(t) = (rho_0 - rho_inf) * exp(-t / tau) + rho_inf."""
     from scipy.optimize import curve_fit
 
     if num_params == 2:
@@ -324,7 +324,7 @@ def get_coherence_model_coeffs(
     (
         amp_mean_file,
         rho_file,
-        tau_max_file,
+        tau_mean_file,
         seasonal_A_file,
         seasonal_B_file,
         seasonal_mask_file,
@@ -338,25 +338,25 @@ def get_coherence_model_coeffs(
     return (
         amp_mean_file,
         rho_file,
-        tau_max_file,
+        tau_mean_file,
         seasonal_A_file,
         seasonal_B_file,
         seasonal_mask_file,
     )
     # rho_min = np.max(rho_stack, axis=0)
-    # tau_max = tau_stack.max(axis=0)
+    # tau_mean = tau_stack.max(axis=0)
     # amp_mean = np.mean(amp_stack, axis=0)
     # save_coherence_data(
     #     output_dir / "global_coherence_data.h5",
     #     amp_mean,
     #     rho_min,
-    #     tau_max,
+    #     tau_mean,
     #     A,
     #     B,
     #     seasonal_mask,
     #     profile,
     # )
-    # return amp_mean, rho_min, tau_max, A, B, seasonal_mask, profile
+    # return amp_mean, rho_min, tau_mean, A, B, seasonal_mask, profile
 
 
 def save_coherence_data(
@@ -387,9 +387,32 @@ def save_coherence_data(
 def calculate_seasonal_coeffs(
     rho_stack: np.ndarray, seasonal_ptp_cutoff: float = 0.5
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r"""Calculate the seasonal A and B parameters from a stack of rho files.
+
+    For pixels with more variation than `seasonal_ptp_cutoff`, model the decorrelation
+    as seasonal instead of exponential decay
+
+    The Equation for the A, B parameters is
+
+    $$
+    \gamma(t_{m}, t_{n}) = \left( A + B\cos\left( \frac{2\pi t_{n}}{365} \right) \right)
+        \left( A + B\cos\left( \frac{2\pi t_{m}}{365} \right) \right)
+    $$
+
+    Parameters
+    ----------
+    rho_stack : np.ndarray
+        Stack of rho files, shape (num_time, rows, cols)
+    seasonal_ptp_cutoff : float
+        Cutoff for defining seasonal pixels. Default is 0.5.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+        Tuple of (seasonal A, seasonal B, seasonal mask)
+
+    """
     rho_ptp = np.ptp(rho_stack, axis=0)
-    # For pixels where there's more than `seasonal_ptp_cutoff`, we'll model the decorrelation
-    # as seasonal instead of exponential decay
     seasonal_pixels = rho_ptp > seasonal_ptp_cutoff
     rho_min = rho_stack.min(axis=0)
     # A, B: Where theres big variation, we use A, B for seasonal simulations
@@ -429,7 +452,6 @@ def calculate_seasonal_coeffs_files(
         _log_and_run(cmd)
 
     # Like the example  https://gdal.org/programs/gdal_calc.html
-    # gdal_calc -A input1.tif input2.tif input3.tif --outfile=result.tif --calc="numpy.max(A,axis=0)"
     a, b, c, d = rho_files
     # Get the minimum of rho:
     rho_min_out = a.parent / "rho_min.tif"
@@ -449,20 +471,26 @@ def calculate_seasonal_coeffs_files(
     if not rho_max_out.exists():
         _log_and_run(cmd)
 
-    # Get a scaled, clipped version of rho to make the simulations noisier
+    # Get the mean of rho:
+    rho_mean_out = a.parent / "rho_mean.tif"
+    cmd = (
+        f"{base_cmd} -A"
+        f" {a} {b} {c} {d} --outfile={rho_mean_out} --calc='numpy.mean(A,axis=0)'"
+    )
+    if not rho_mean_out.exists():
+        _log_and_run(cmd)
+
+    # Get a scaled, clipped version of the mean of rho to make the simulations noisier
     rho_shrunk_out = a.parent / "rho_shrunk.tif"
     # shrink down all long term coherences, but extra shrink the lower starting ones
     calc_str = "numpy.where(A < 0.2, A**4, A**2)"
-    cmd = f"{base_cmd} -A {rho_min_out} --outfile={rho_shrunk_out} --calc='{calc_str}'"
+    cmd = f"{base_cmd} -A {rho_mean_out} --outfile={rho_shrunk_out} --calc='{calc_str}'"
     if not rho_shrunk_out.exists():
         _log_and_run(cmd)
 
     # Get the peak-to-peak raster:
     ptp_out = a.parent / "rho_ptp.tif"
-    cmd = (
-        f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A"
-        " - B'"
-    )
+    cmd = f"{base_cmd} -A {rho_max_out} -B {rho_min_out} --outfile={ptp_out} --calc='A - B'"  # noqa: E501
     if not ptp_out.exists():
         _log_and_run(cmd)
 
@@ -478,8 +506,8 @@ def calculate_seasonal_coeffs_files(
     # Calculate seasonal_A.tif
     seasonal_A_out = a.parent / "seasonal_A.tif"
     cmd = (
-        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out} --calc='0.5 * (1 +"
-        " numpy.sqrt(A))'"
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_A_out}"
+        " --calc='0.5 * (1 + numpy.sqrt(A))'"
     )
     if not seasonal_A_out.exists():
         _log_and_run(cmd)
@@ -487,19 +515,21 @@ def calculate_seasonal_coeffs_files(
     # Calculate seasonal_B.tif
     seasonal_B_out = a.parent / "seasonal_B.tif"
     cmd = (
-        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out} --calc='0.5 * (1 -"
-        " numpy.sqrt(A))'"
+        f"{base_cmd} -A {rho_min_out} --outfile={seasonal_B_out}"
+        " --calc='0.5 * (1 - numpy.sqrt(A))'"
     )
     if not seasonal_B_out.exists():
         _log_and_run(cmd)
 
-    # Get the maximum of tau:
-    tau_max_out = a.parent / "tau_max.tif"
+    # Get the mean of tau:
+    # using "max" would lead to high coherence, less noise.
+    # Likewise, the minimum of tau would lead to quicker coherence drop (more noise)
+    tau_mean_out = a.parent / "tau_mean.tif"
     cmd = (
         f"{base_cmd} -A"
-        f" {' '.join(map(str, tau_files))} --outfile={tau_max_out} --calc='numpy.max(A,axis=0)'"
+        f" {' '.join(map(str, tau_files))} --outfile={tau_mean_out} --calc='numpy.mean(A,axis=0)'"
     )
-    if not tau_max_out.exists():
+    if not tau_mean_out.exists():
         _log_and_run(cmd)
 
     if rho_transform == RhoOption.SHRUNK:
@@ -508,20 +538,22 @@ def calculate_seasonal_coeffs_files(
         rho_out = rho_min_out
     elif rho_transform == RhoOption.MAX:
         rho_out = rho_max_out
+    elif rho_transform == RhoOption.MEAN:
+        rho_out = rho_mean_out
     else:
         raise ValueError(f"Unknown option for {rho_transform=}")
     return (
         amp_mean_out,
         rho_out,
-        tau_max_out,
+        tau_mean_out,
         seasonal_A_out,
         seasonal_B_out,
         seasonal_mask_out,
     )
 
 
-def rho_to_AB(rho: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
-    """Convert rho to A and B parameters."""
-    A = 0.5 * (1 + np.sqrt(rho))
-    B = 0.5 * (1 - np.sqrt(rho))
+def rho_to_AB(rho_inf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
+    """Convert long-term coherence value to seasonal A and B parameters."""
+    A = 0.5 * (1 + np.sqrt(rho_inf))
+    B = 0.5 * (1 - np.sqrt(rho_inf))
     return A, B

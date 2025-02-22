@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from troposim import turbulence
 
-from . import covariance, deformation, global_coherence
+from . import covariance, crlb, deformation, global_coherence
 from ._blocks import iter_blocks
 from ._types import Bbox, PathOrStr
 from .config import SimulationInputs
@@ -69,7 +69,7 @@ def create_simulation_data(
 
     using_global_coh = inps.custom_covariance is None
 
-    if using_global_coh:
+    if inps.include_decorrelation and using_global_coh:
         logger.info("Getting Rhos, Tau rasters")
         # The global coherence is at 90 meters:
         upsample_y = int(round(90 / inps.res_y))
@@ -157,6 +157,29 @@ def create_simulation_data(
         )
     )
     key = random.key(seed)
+    if not using_global_coh:
+        C_arrays = inps.custom_covariance.to_array(x_arr)
+        crlb_std_devs = crlb.compute_lower_bound_std(
+            C_arrays, num_looks=inps.crlb_num_looks
+        )
+        # TODO: what format to save this in?
+        out_crlb_file = outdir / "crlb_std_devs.csv"
+        if not out_crlb_file.exists():
+            # np.save(out_crlb_file, crlb_std_devs)
+            # Save with the `time` vector
+            crlb_std_devs = crlb_std_devs.reshape(-1, 1)
+            crlb_std_devs = np.concatenate(
+                [np.array(time).reshape(-1, 1), crlb_std_devs], axis=1
+            )
+            np.savetxt(out_crlb_file, crlb_std_devs, delimiter=",")
+    else:
+        # Each pixel has unique coherence matrix, so unique CRLBs
+        output_crlb_filenames = [
+            output_slc_dir / f"{date.strftime('%Y%m%d')}.crlb.tif" for date in time
+        ]
+        for filename in output_crlb_filenames:
+            with rio.open(filename, "w", **(slc_profile | {"dtype": "float32"})) as dst:
+                pass
 
     logger.info("Simulating correlated noise")
     for rows, cols in tqdm(b_iter):
@@ -182,8 +205,9 @@ def create_simulation_data(
                 seasonal_B=seasonal_B,
                 seasonal_mask=seasonal_mask,
             )
-        else:
-            C_arrays = inps.custom_covariance.to_array(x_arr)
+            crlb_std_devs = covariance.compute_crlb_batch(
+                C_arrays=C_arrays, num_looks=inps.crlb_num_looks
+            )
 
         noisy_stack = covariance.make_noisy_samples_jax(
             subkey, C=C_arrays, defo_stack=propagation_phase, amplitudes=amps
@@ -193,6 +217,11 @@ def create_simulation_data(
         for filename, layer in zip(output_slc_filenames, noisy_stack):
             with rio.open(filename, "r+", **profile) as dst:
                 dst.write(layer, 1, window=window)
+
+        if using_global_coh:
+            for filename, layer in zip(output_crlb_filenames, crlb_std_devs):
+                with rio.open(filename, "r+", **slc_profile) as dst:
+                    dst.write(layer, 1, window=window)
 
         if inps.include_summed_truth:
             for filename, layer in zip(truth_filenames, propagation_phase[1:]):

@@ -9,6 +9,7 @@ from functools import partial
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, jit, random
+from jax.scipy.linalg import cho_factor, cho_solve
 from numpy.typing import ArrayLike, NDArray
 
 rng = np.random.default_rng()
@@ -58,15 +59,15 @@ def ccg_noise_jax(key: random.PRNGKey, N: int) -> Array:
 
 
 def simulate_coh_stack(
-    time: np.ndarray,
-    gamma0: np.ndarray,
-    gamma_inf: np.ndarray,
-    Tau0: np.ndarray,
-    signal: np.ndarray | None = None,
-    seasonal_mask: np.ndarray | None = None,
-    seasonal_A: np.ndarray | None = None,
-    seasonal_B: np.ndarray | None = None,
-) -> np.ndarray:
+    time: jnp.ndarray,
+    gamma0: jnp.ndarray,
+    gamma_inf: jnp.ndarray,
+    Tau0: jnp.ndarray,
+    signal: jnp.ndarray | None = None,
+    seasonal_mask: jnp.ndarray | None = None,
+    seasonal_A: jnp.ndarray | None = None,
+    seasonal_B: jnp.ndarray | None = None,
+) -> Array:
     """Create a coherence matrix at each pixel.
 
     Parameters
@@ -145,7 +146,7 @@ def simulate_coh_stack(
     return C
 
 
-def _get_diffs(stack: ArrayLike) -> np.ndarray:
+def _get_diffs(stack: NDArray[np.complex64]) -> np.ndarray:
     """Create all differences between the deformation stack.
 
     Parameters
@@ -171,9 +172,9 @@ def _get_diffs(stack: ArrayLike) -> np.ndarray:
 
 
 def make_noisy_samples(
-    C: ArrayLike,
-    defo_stack: ArrayLike,
-    amplitudes: ArrayLike | None = None,
+    C: NDArray[np.complex64],
+    defo_stack: NDArray[np.float32],
+    amplitudes: NDArray[np.float32] | None = None,
 ) -> np.ndarray:
     """Create noisy deformation samples given a covariance matrix and deformation stack.
 
@@ -295,3 +296,53 @@ def make_noisy_samples_jax(
         return samps3d
 
     return samps3d * amplitudes[None, :, :]
+
+
+@partial(jit, static_argnums=(1,))
+def compute_crlb_batch(
+    C_arrays: NDArray[np.complex64], num_looks: int, reference_idx: int = 0
+) -> Array:
+    rows, cols, n, _ = C_arrays.shape
+    Gamma = jnp.abs(C_arrays)
+
+    # Identity used for regularization and for solving
+    Id = jnp.eye(n, dtype=Gamma.dtype)
+    # repeat the identity matrix for each pixel
+    Id = jnp.tile(Id, (rows, cols, 1, 1))
+
+    # Attempt to invert Gamma
+    cho, is_lower = cho_factor(Gamma)
+
+    # Check: If it fails the cholesky factor, it's close to singular and
+    # we should just fall back to EVD
+    # Use the already- factored |Gamma|^-1, solving Ax = I gives the inverse
+    Gamma_inv = cho_solve((cho, is_lower), Id)
+    # Compute Fisher Information Matrix
+    X = 2 * num_looks * (Gamma * Gamma_inv - Id.astype("float32"))
+
+    # Compute the CRLB standard deviation
+    # # Normally, we construct the Theta partial derivative matrix like this
+    # Theta = np.zeros((N, N - 1))
+    # First row is 0 (using day 0 as reference)
+    # Theta[1:, :] = np.eye(N - 1)  # Last N-1 rows are identity
+    # More efficient computation of Theta.T @ X @ Theta
+    # Instead of explicit matrix multiplication, directly extract relevant elements
+    # We want all elements except the reference row/column
+    row_idx = jnp.concatenate(
+        [jnp.arange(reference_idx), jnp.arange(reference_idx + 1, n)]
+    )
+    projected_fim = X[..., row_idx[:, None], row_idx]
+
+    # Invert each (n-1, n-1) matrix in the batch
+    # Use cholesky repeat the (n-1, n-1) identity matrix for each pixel
+    Id = jnp.tile(jnp.eye(n - 1, dtype=projected_fim.dtype), (rows, cols, 1, 1))
+    cho, is_lower = cho_factor(projected_fim)
+    crlb = cho_solve((cho, is_lower), Id)  # Shape: (rows, cols, n-1, n-1)
+
+    # Extract standard deviations from the diagonal of each CRLB matrix
+    # Shape: (rows, cols, n-1)
+    crlb_std_dev = jnp.sqrt(jnp.diagonal(crlb, axis1=-2, axis2=-1))
+    # Insert zeros at reference_idx to match evd_estimate shape (rows, cols, n)
+    crlb_std_dev = jnp.insert(crlb_std_dev, reference_idx, 0, axis=-1)
+    # Now move the n (time) dimension to be first
+    return jnp.moveaxis(crlb_std_dev, -1, 0)

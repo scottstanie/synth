@@ -71,5 +71,6 @@ class RhoOption(Enum):
     """Options to transform `rho` for noiser/less noisy data."""
 
     SHRUNK = "shrunk"
+    MEAN = "mean"
     MIN = "min"
     MAX = "max"

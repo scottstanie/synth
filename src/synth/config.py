@@ -57,45 +57,105 @@ class CustomCoherence(BaseModel):
         return C
 
 
-# class SimulationInputs(BaseSettings):
 class SimulationInputs(BaseModel):
-    """Create parameters describing simulation data to generate."""
+    """Parameters describing simulation data to generate."""
 
     model_config = SettingsConfigDict(cli_parse_args=True, cli_prog_name="synth")
 
-    output_dir: Path = Path()
-    bounding_box: Bbox = Field(
-        ..., description="(left, bottom, right, top) in EPSG:4326"
+    output_dir: Path = Field(
+        default_factory=Path, description="Directory where output files will be saved."
     )
-    start_date: datetime = datetime(2020, 1, 1)
-    dt: int = Field(12, ge=1, le=365, description="Time step [days]")
-    num_dates: int = Field(20, ge=2, le=1000)
-    res_y: float = Field(15, ge=1, le=1000, description="Y resolution [meters]")
-    res_x: float = Field(15, ge=1, le=1000, description="X resolution [meters]")
-    include_turbulence: bool = True
-    max_turbulence_amplitude: float = 5
-    include_deformation: bool = True
-    max_defo_amplitude: float = 5
-    include_ramps: bool = True
-    max_ramp_amplitude: float = 1.0
-    include_stratified: bool = False
-    rho_transform: RhoOption = RhoOption.SHRUNK
-    include_summed_truth: bool = True
+
+    bounding_box: Bbox = Field(
+        ...,
+        description=(
+            "(left, bottom, right, top) in degrees EPSG:4326, defining the geographic"
+            " bounding box."
+        ),
+    )
+
+    start_date: datetime = Field(
+        default=datetime(2020, 1, 1),
+        description="The starting date for the simulation.",
+    )
+
+    dt: int = Field(
+        default=12, ge=1, le=365, description="Time step in days for the simulation."
+    )
+
+    num_dates: int = Field(
+        default=20, ge=2, le=1000, description="Total number of dates to simulate."
+    )
+
+    res_y: float = Field(
+        default=15, ge=1, description="Pixel spacing along Y direction (meters)."
+    )
+    res_x: float = Field(
+        default=15, ge=1, description="Pixel spacing along X direction (meters)."
+    )
+
+    include_turbulence: bool = Field(
+        default=True, description="Flag to include turbulence in the simulation."
+    )
+    max_turbulence_amplitude: float = Field(
+        default=5, description="Maximum amplitude for turbulence effects."
+    )
+
+    include_deformation: bool = Field(
+        default=True,
+        description="Flag to include deformation effects in the simulation.",
+    )
+
+    max_defo_amplitude: float = Field(
+        default=5, description="Maximum amplitude for deformation effects."
+    )
+
+    include_ramps: bool = Field(
+        default=True, description="Flag to include ramp effects in the simulation."
+    )
+
+    max_ramp_amplitude: float = Field(
+        default=1.0, description="Maximum amplitude for ramp effects."
+    )
+
+    include_stratified: bool = Field(
+        default=False,
+        description="Flag to include stratified effects in the simulation.",
+    )
+
+    rho_transform: RhoOption = Field(
+        default=RhoOption.SHRUNK, description="Method for rho transformation."
+    )
+
+    include_summed_truth: bool = Field(
+        default=True, description="Flag to include the summed true simulation data."
+    )
 
     block_shape: tuple[int, int] = Field(
-        (128, 128),
+        default=(128, 128),
         description=(
             "Size of (rows, cols) to process at one time when generating covariance"
-            " matrices/samples.  Must have enough memory for several matrices of shape"
-            " `(*block_shape, inps.num_dates, inps.num_dates)`"
+            " matrices/samples. You must have enough memory for several matrices of"
+            " shape `(*block_shape, inps.num_dates, inps.num_dates)`."
         ),
     )
 
-    custom_covariance: Optional[CustomCoherence] = Field(
-        None,
+    include_decorrelation: bool = Field(
+        default=True,
         description=(
-            "Custom covariance parameters to use if not using the global dataset"
+            "Flag to include decorrelation in the simulation. Can be from either a"
+            " manual, `custom_covariance`, or using the real Sentinel-1 Global"
+            " Coherence dataset based on the area of interest."
         ),
+    )
+    custom_covariance: Optional[CustomCoherence] = Field(
+        default=None,
+        description=(
+            "Custom covariance parameters to use if not using the global dataset."
+        ),
+    )
+    crlb_num_looks: int = Field(
+        default=1, ge=1, description="Number of looks to use for CRLB computation."
     )
 
     def create_profile(self) -> dict[str, Any]:
@@ -135,7 +195,6 @@ class SimulationInputs(BaseModel):
             "width": width,
             "count": 1,
             "compress": "lzw",
-            # "res": [res_x, res_y],
             "transform": [res_x, 0.0, left, 0.0, -res_y, top, 0.0, 0.0, 1.0],
             "crs": "EPSG:4326",
             "driver": "GTiff",
