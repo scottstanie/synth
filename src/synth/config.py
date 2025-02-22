@@ -154,6 +154,9 @@ class SimulationInputs(BaseModel):
             "Custom covariance parameters to use if not using the global dataset."
         ),
     )
+    crlb_num_looks: int = Field(
+        default=1, ge=1, description="Number of looks to use for CRLB computation."
+    )
 
     def create_profile(self) -> dict[str, Any]:
         """Create a rasterio profile based on SimulationInputs.

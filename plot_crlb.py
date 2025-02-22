@@ -4,7 +4,7 @@ import scienceplots  # noqa: F401
 from dolphin.phase_link.simulate import simulate_coh
 from matplotlib.gridspec import GridSpec
 
-from dolphin.phase_link.crlb import compute_lower_bound_std
+from synth.crlb import compute_lower_bound_std
 
 plt.style.use(["science", "no-latex"])
 
