@@ -1,9 +1,11 @@
 import logging
-from datetime import timedelta
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import h5py
 import numpy as np
+from numpy.typing import NDArray
 import rasterio
 import rasterio as rio
 import rasterio.windows
@@ -157,21 +159,28 @@ def create_simulation_data(
         )
     )
     key = random.key(seed)
-    if not using_global_coh:
-        C_arrays = inps.custom_covariance.to_array(x_arr)
-        crlb_std_devs = crlb.compute_lower_bound_std(
-            C_arrays, num_looks=inps.crlb_num_looks
-        )
+
+    def _save_crlb_std_devs(
+        C: NDArray, outdir: Path, time: Sequence[datetime], num_looks: int
+    ):
+        crlb_std_devs = crlb.compute_lower_bound_std(C, num_looks=num_looks)
         # TODO: what format to save this in?
         out_crlb_file = outdir / "crlb_std_devs.csv"
         if not out_crlb_file.exists():
-            # np.save(out_crlb_file, crlb_std_devs)
-            # Save with the `time` vector
-            crlb_std_devs = crlb_std_devs.reshape(-1, 1)
-            crlb_std_devs = np.concatenate(
-                [np.array(time).reshape(-1, 1), crlb_std_devs], axis=1
+            dates = [t.strftime("%Y-%m-%d") for t in time]  # or '%Y-%m-%dT%H:%M:%S'
+            data = np.column_stack((dates, crlb_std_devs))
+            np.savetxt(
+                out_crlb_file,
+                data,
+                delimiter=",",
+                fmt="%s",
+                header="date,crlb_std_dev_radians",
+                comments="",
             )
-            np.savetxt(out_crlb_file, crlb_std_devs, delimiter=",")
+
+    if not using_global_coh:
+        C_arrays = inps.custom_covariance.to_array(x_arr)
+        _save_crlb_std_devs(C_arrays, outdir, time, inps.crlb_num_looks)
     else:
         # Each pixel has unique coherence matrix, so unique CRLBs
         output_crlb_filenames = [
@@ -191,7 +200,13 @@ def create_simulation_data(
             amps = None
         if verbose:
             tqdm.write(f"Simulating correlated noise for {rows}, {cols}")
-        propagation_phase = load_current_phase(files, rows, cols)
+        if files:
+            propagation_phase = load_current_phase(files, rows, cols)
+        else:  # all zeros
+            propagation_phase = np.zeros(
+                (len(x_arr), rows.stop - rows.start, cols.stop - cols.start),
+                dtype=np.float32,
+            )
 
         key, subkey = random.split(key)
         if using_global_coh:

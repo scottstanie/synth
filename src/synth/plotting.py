@@ -5,11 +5,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from opera_utils import get_dates
 from matplotlib.colors import LogNorm
 from scipy.stats import gaussian_kde
 
 
-def process_coherence_data(directory: str | Path) -> pd.DataFrame:
+def process_coherence_data(
+    directory: str | Path, by_date: bool = False
+) -> pd.DataFrame:
     """Process InSAR coherence data from a directory and return analysis dataframe.
 
     Parameters
@@ -58,18 +61,30 @@ def process_coherence_data(directory: str | Path) -> pd.DataFrame:
 
     # Process differences
     pixels = reader[:, :, :].reshape(reader.shape[0], -1)
-    rmse_by_pixel = np.sqrt(np.mean(pixels * pixels.conj(), axis=0))
+    if not by_date:
+        rmse_by_pixel = np.sqrt(np.mean(pixels * pixels.conj(), axis=0))
+        return pd.DataFrame(
+            {
+                "temporal_coherence": temp_coh.ravel(),
+                "similarity": sim.ravel(),
+                "rmse": rmse_by_pixel,
+            }
+        )
+    else:
+        # Save the rmse by pixel for each date
+        rmse_by_by_date = np.sqrt(np.mean(pixels * pixels.conj(), axis=1))
 
-    # Create DataFrame
-    df = pd.DataFrame(
-        {
-            "temporal_coherence": temp_coh.ravel(),
-            "similarity": sim.ravel(),
-            "rmse": rmse_by_pixel,
-        }
-    )
-
-    return df
+        date_pairs = [Path(p).stem for p in reader.file_list]
+        dates = [get_dates(f)[1] for f in date_pairs]
+        return pd.DataFrame(
+            {
+                "temporal_coherence": np.mean(temp_coh),
+                "similarity": np.mean(sim),
+                "rmse": rmse_by_by_date,
+                "date_pair": date_pairs,
+            },
+            index=dates,
+        )
 
 
 def plot_coherence_analysis(
@@ -299,7 +314,6 @@ def plot_boxplot(
 
 def plot_differences(directories):
     from dolphin import io
-    from opera_utils import get_dates
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 8))
     colors = plt.cm.rainbow(np.linspace(0, 1, len(directories)))
