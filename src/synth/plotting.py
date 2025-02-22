@@ -114,13 +114,6 @@ def plot_coherence_analysis(
     if xlim is None:
         xlim = (0, 1) if col == "temporal_coherence" else (-1, 1)
 
-    # Create coherence bins
-    df_filtered["coherence_bin"] = pd.cut(
-        df_filtered[col],
-        bins=[0, 0.2, 0.4, 0.6, 0.8, 1.0],
-        labels=["0-0.2", "0.2-0.4", "0.4-0.6", "0.6-0.8", "0.8-1.0"],
-    )
-
     # Create figure
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 6))
