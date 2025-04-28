@@ -5,13 +5,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from opera_utils import get_dates
 from matplotlib.colors import LogNorm
+from opera_utils import get_dates
 from scipy.stats import gaussian_kde
 
 
 def process_coherence_data(
-    directory: str | Path, by_date: bool = False
+    directory: str | Path,
+    by_date: bool = False,
+    subsample: int = 1,
+    difference_dir: str | Path = "differences",
 ) -> pd.DataFrame:
     """Process InSAR coherence data from a directory and return analysis dataframe.
 
@@ -23,6 +26,12 @@ def process_coherence_data(
             - differences/*.tif
             - interferograms/temporal_coherence.tif
             - interferograms/similarity.tif
+    by_date : bool, optional
+        If True, return a dataframe with one row per date, by default False
+    subsample : int, optional
+        Subsample the data by this factor, by default 1
+    difference_dir : str or Path, optional
+        Directory containing the difference files, by default "differences"
 
     Returns
     -------
@@ -45,22 +54,25 @@ def process_coherence_data(
     from dolphin import io
 
     main_dir = Path(directory)
-    diff_dir = main_dir / "differences"
+    diff_dir = main_dir / difference_dir
 
     # Read data
     reader = io.RasterStackReader.from_file_list(sorted(diff_dir.glob("*tif")))
-    temp_coh = io.load_gdal(main_dir / "interferograms/temporal_coherence.tif")
+    temp_coh = io.load_gdal(
+        main_dir / "interferograms/temporal_coherence.tif", subsample_factor=subsample
+    )
     # sim = io.load_gdal(main_dir / "interferograms/similarity.tif")
     # sim = io.load_gdal(next(sorted(Path(main_dir / "linked_phase".rglob("similarity_*.tif")))))
     # AVERAGE sim... since this is average temp coh?
     # Or should i just do a single one...
     # print(sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif")))
     sim = io.load_gdal(
-        sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif"))[0]
+        sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif"))[0],
+        subsample_factor=subsample,
     )
 
     # Process differences
-    pixels = reader[:, :, :].reshape(reader.shape[0], -1)
+    pixels = reader[:, ::subsample, ::subsample].reshape(reader.shape[0], -1)
     if not by_date:
         rmse_by_pixel = np.sqrt(np.mean(pixels * pixels.conj(), axis=0))
         return pd.DataFrame(

@@ -4,12 +4,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import h5py
+import hdf5plugin
 import numpy as np
-from numpy.typing import NDArray
 import rasterio
 import rasterio as rio
 import rasterio.windows
-from jax import random
+from jax import Array, random
+from numpy.typing import NDArray
 from tqdm.auto import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from troposim import turbulence
@@ -22,8 +23,12 @@ from .utils import _setup_logging, load_current_phase, round_mantissa
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
-# HDF5_KWARGS = {"chunks": (4, 128, 128), "compression": "lzf"}
-HDF5_KWARGS: dict[str, tuple | str] = {}
+HDF5_KWARGS: dict[str, tuple | str] = {
+    "chunks": (5, 256, 256),
+    "compression": hdf5plugin.Blosc2(
+        cname="blosclz", clevel=6, filters=hdf5plugin.Blosc2.SHUFFLE
+    ),
+}
 
 logger = logging.getLogger("synth")
 
@@ -161,7 +166,7 @@ def create_simulation_data(
     key = random.key(seed)
 
     def _save_crlb_std_devs(
-        C: NDArray, outdir: Path, time: Sequence[datetime], num_looks: int
+        C: NDArray | Array, outdir: Path, time: Sequence[datetime], num_looks: int
     ):
         crlb_std_devs = crlb.compute_lower_bound_std(C, num_looks=num_looks)
         # TODO: what format to save this in?
@@ -179,6 +184,7 @@ def create_simulation_data(
             )
 
     if not using_global_coh:
+        assert inps.custom_covariance is not None
         C_arrays = inps.custom_covariance.to_array(x_arr)
         _save_crlb_std_devs(C_arrays, outdir, time, inps.crlb_num_looks)
     else:
@@ -376,7 +382,7 @@ def create_turbulence(
                 )
                 turb *= METERS_TO_PHASE
 
-                round_mantissa(turb, significant_bits=9)
+                round_mantissa(turb, significant_bits=8)
                 logger.debug("Saving....")
                 dset[idx] = turb
             # dset.write_direct(turb, dest_sel=idx) # needs to be contiguous
@@ -425,7 +431,7 @@ def create_defo_stack(
             with logging_redirect_tqdm():
                 logger.debug("Making deformation %s", idx)
                 data = final_defo * t
-                round_mantissa(data, 8)
+                round_mantissa(data, significant_bits=8)
                 logger.debug("Saving....")
                 dset[idx] = data
 

@@ -6,7 +6,9 @@ dependencies:
   - pip>=21.3  # https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/#editable-installation
   - git  # for pip install, due to setuptools_scm
   - gdal[version='>=3.9']
+  - rasterio
   - h5py
+  - hdf5plugin
   - jax
   - jupyter           # For Jupyter UI only
   - ipywidgets        # For Jupyter UI only
@@ -16,7 +18,6 @@ dependencies:
   - pydantic
   - pydantic-settings
   - scipy
-  - rasterio
   - tqdm
   - pip:
     - troposim

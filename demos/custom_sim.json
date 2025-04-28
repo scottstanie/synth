@@ -11,6 +11,7 @@
   "num_dates": 30,
   "res_y": 15.0,
   "res_x": 15.0,
+  "crlb_num_looks": 121,
   "include_turbulence": true,
   "max_turbulence_amplitude": 5.0,
   "include_deformation": true,
