@@ -115,17 +115,17 @@ def compare_phase(
             rows, cols = slice(10, 15), slice(10, 15)
             window = Window.from_slices(rows, cols)
             val1 = src_est.read(1, window=window, masked=True)
-            # val1 = src_est.read(1, masked=True)
 
             full_window = _get_full_window(rows, cols, strides)
-            # print(strides)
-            # print(window)
-            # print(full_window)
-            val2 = src_true.read(
-                1, window=full_window, masked=True, out_shape=val1.shape
-            )
-            # val2 = src_true.read(1, masked=True)
-            ref_vals.append(np.nanmean(val2 - val1))
+            val2 = src_true.read(1, window=full_window, out_shape=val1.shape)
+            if is_wrapped:
+                val1 = np.angle(val1) if np.iscomplexobj(val1) else val1
+                val2 = np.angle(val2) if np.iscomplexobj(val2) else val2
+                ref_vals.append(
+                    np.nanmean(np.angle(np.exp(1j * val2) * np.exp(-1j * val1)))
+                )
+            else:
+                ref_vals.append(np.nanmean(val2 - val1))
 
     # Setup all empty output rasters
     output_dir.mkdir(exist_ok=True, parents=True)
