@@ -4,10 +4,8 @@ from typing import Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from matplotlib.colors import LogNorm
 from opera_utils import get_dates
-from scipy.stats import gaussian_kde
 
 
 def process_coherence_data(
@@ -66,8 +64,13 @@ def process_coherence_data(
     # AVERAGE sim... since this is average temp coh?
     # Or should i just do a single one...
     # print(sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif")))
+    if (pl_dir := Path(main_dir / "linked_phase")).exists():
+        sim_f = sorted(pl_dir.rglob("similarity_*.tif"))[0]
+    else:
+        pl_dir = Path(main_dir / "phase_linking/linked_phase")
+        sim_f = sorted(pl_dir.rglob("similarity_*.tif"))[0]
     sim = io.load_gdal(
-        sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif"))[0],
+        sim_f,
         subsample_factor=subsample,
     )
 
@@ -119,6 +122,8 @@ def plot_coherence_analysis(
         Figure and axes objects for further customization
 
     """
+    from scipy.stats import gaussian_kde
+
     # Filter out problematic values
     mask = df[col] != 0
     df_filtered = df[mask].copy().dropna()
@@ -408,6 +413,8 @@ def plot_temporal_coherence_vs_rmse(df):
     The visualization uses seaborn for enhanced statistical plotting.
 
     """
+    import seaborn as sns
+
     # Create bins for temporal coherence
     df["coherence_bin"] = pd.cut(
         df["temporal_coherence"],

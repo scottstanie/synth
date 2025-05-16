@@ -63,10 +63,8 @@ def create_simulation_data(
     _setup_logging(level=logging.DEBUG if verbose else logging.INFO)
 
     # Create list of SLC dates
-    time = [
-        inps.start_date + idx * timedelta(days=inps.dt) for idx in range(inps.num_dates)
-    ]
-    x_arr = np.array([(t - time[0]).days for t in time])
+    time = inps.datetimes
+    x_arr = np.array(inps.days_since_start)
 
     outdir = inps.output_dir
     layers_dir = outdir / "input_layers"

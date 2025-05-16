@@ -1,9 +1,10 @@
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
 import jax.numpy as jnp
+import numpy as np
 from jax import Array
 from numpy.typing import ArrayLike
 from pydantic import BaseModel, Field
@@ -31,8 +32,9 @@ class CustomCoherence(BaseModel):
 
     def to_array(self, time: ArrayLike) -> Array:
         """Create the complex coherence matrix as a JAX Array."""
-        num_time = time.shape[0]
-        temp_baselines = jnp.abs(time[None, :] - time[:, None])
+        time_arr = jnp.asarray(time)
+        num_time = time_arr.shape[0]
+        temp_baselines = jnp.abs(time_arr[None, :] - time_arr[:, None])
         gamma = (self.gamma0 - self.gamma_inf) * jnp.exp(
             -temp_baselines / self.tau0
         ) + self.gamma_inf
@@ -158,6 +160,19 @@ class SimulationInputs(BaseModel):
         default=1, ge=1, description="Number of looks to use for CRLB computation."
     )
 
+    @property
+    def datetimes(self) -> list[datetime]:
+        """Return the time array."""
+        return [
+            self.start_date + idx * timedelta(days=self.dt)
+            for idx in range(self.num_dates)
+        ]
+
+    @property
+    def days_since_start(self) -> list[int]:
+        """Return a list of integers for the number of days since start_date."""
+        return [(t - self.start_date).days for t in self.datetimes]
+
     def create_profile(self) -> dict[str, Any]:
         """Create a rasterio profile based on SimulationInputs.
 
@@ -207,3 +222,9 @@ class SimulationInputs(BaseModel):
         }
 
         return profile
+
+    def get_custom_covariance_array(self) -> Array:
+        """Return the custom covariance matrix."""
+        if self.custom_covariance is None:
+            raise ValueError("No custom covariance matrix provided.")
+        return self.custom_covariance.to_array(self.days_since_start)
