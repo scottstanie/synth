@@ -157,7 +157,7 @@ def compare_phase(
             k = -1 if flip_sign else 1.0
             if is_wrapped:
                 if np.iscomplexobj(cur_phase):
-                    cur_phase = np.angle(cur_phase - ref_val)
+                    cur_phase = np.angle(cur_phase * np.exp(-1j * ref_val))
                 else:
                     cur_phase = cur_phase - ref_val
                 # cur_truth is already float
