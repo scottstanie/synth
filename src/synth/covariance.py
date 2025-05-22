@@ -10,28 +10,18 @@ import jax.numpy as jnp
 import numpy as np
 from jax import Array, jit, random
 from jax.scipy.linalg import cho_factor, cho_solve
-from numpy.typing import ArrayLike, NDArray
-
-rng = np.random.default_rng()
-
-
-def ccg_noise(N: int) -> NDArray[np.complex64]:
-    """Create N samples of standard complex circular Gaussian noise."""
-    return (
-        rng.normal(scale=1 / np.sqrt(2), size=2 * N)
-        .astype(np.float32)
-        .view(np.complex64)
-    )
+from numpy.typing import NDArray
 
 
 @partial(jit, static_argnums=(1,))
-def ccg_noise_jax(key: random.PRNGKey, N: int) -> Array:
+def ccg_noise_jax(key: Array, N: int) -> Array:
     """Create N samples of standard complex circular Gaussian noise using JAX.
 
     Parameters
     ----------
-    key : random.PRNGKey
+    key : Array
         JAX random key for generating random numbers.
+        Created with jax.random.key()
     N : int
         Number of complex samples to generate.
 
@@ -146,92 +136,9 @@ def simulate_coh_stack(
     return C
 
 
-def _get_diffs(stack: NDArray[np.complex64]) -> np.ndarray:
-    """Create all differences between the deformation stack.
-
-    Parameters
-    ----------
-    stack : np.ndarray
-        Signal stack of shape (num_time, rows, cols).
-
-    Returns
-    -------
-    np.ndarray, complex64
-        Covariance phases of shape (rows, cols, num_time, num_time).
-
-    """
-    # Create all possible differences using broadcasting
-    # shape: (num_time, 1, rows, cols)
-    stack_i = np.exp(1j * stack[:, None, :, :])
-    # shape: (1, num_time, rows, cols)
-    stack_j = np.exp(1j * stack[None, :, :, :])
-    diff_stack = stack_i * stack_j.conj()
-
-    # Reshape to (rows, cols, num_time, num_time)
-    return diff_stack.transpose(2, 3, 0, 1)
-
-
-def make_noisy_samples(
-    C: NDArray[np.complex64],
-    defo_stack: NDArray[np.float32],
-    amplitudes: NDArray[np.float32] | None = None,
-) -> np.ndarray:
-    """Create noisy deformation samples given a covariance matrix and deformation stack.
-
-    Parameters
-    ----------
-    C : ArrayLike,
-        Covariance matrix of shape (num_time, num_time) , or you can pass
-        on matrix per pixel as shape (rows, cols, num_time, num_time).
-    defo_stack : ArrayLike,
-        Deformation stack of shape (num_time, rows, cols).
-    amplitudes: 2D ArrayLike, optional
-        If provided, set the amplitudes of the output pixels.
-        Default is to use all ones.
-
-    Returns
-    -------
-    samps3d: np.ndarray
-        Noisy deformation samples of shape (num_time, rows, cols).
-
-    """
-    if amplitudes is not None and amplitudes.ndim != 2:
-        raise ValueError("`amplitudes` must be 2D, or None")
-
-    num_time, rows, cols = defo_stack.shape
-    shape2d = (rows, cols)
-    num_pixels = np.prod(shape2d)
-
-    C_tiled = np.tile(C, (*shape2d, 1, 1)) if C.squeeze().ndim == 2 else C
-
-    if C_tiled.shape != (rows, cols, num_time, num_time):
-        raise ValueError(f"{C_tiled.shape=}, but {defo_stack.shape=}")
-    # Reset the diagonals of each pixel to 1
-    rs, cs = np.diag_indices(num_time)
-    C_tiled[:, :, rs, cs] = 1
-
-    signal_cov = _get_diffs(defo_stack)
-    C_tiled_with_signal = C_tiled * signal_cov
-    C_unstacked = C_tiled_with_signal.reshape(num_pixels, num_time, num_time)
-
-    noise = ccg_noise(num_time * num_pixels)
-    noise_unstacked = noise.reshape(num_pixels, num_time, 1)
-
-    L_unstacked = np.linalg.cholesky(C_unstacked)
-    samps = L_unstacked @ noise_unstacked
-
-    samps3d = np.moveaxis(samps.reshape(*shape2d, num_time), -1, 0)
-    if amplitudes is None:
-        return samps3d
-
-    return samps3d * amplitudes[None, :, :]
-
-
 @partial(jit, static_argnums=(3, 4))
-def _sample(C_tiled, defo_stack, key, num_pixels, num_time):
-    # signal_cov = _get_diffs(defo_stack)
+def _sample(C_tiled, defo_stack, key, num_pixels: int, num_time: int) -> Array:
     stack_i = jnp.exp(1j * defo_stack[:, None, :, :])
-    # shape: (1, num_time, rows, cols)
     stack_j = jnp.exp(1j * defo_stack[None, :, :, :])
     diff_stack = stack_i * stack_j.conj()
     signal_cov = diff_stack.transpose(2, 3, 0, 1)
@@ -248,9 +155,9 @@ def _sample(C_tiled, defo_stack, key, num_pixels, num_time):
 
 def make_noisy_samples_jax(
     key,
-    C: ArrayLike,
-    defo_stack: ArrayLike,
-    amplitudes: ArrayLike | None = None,
+    C: Array,
+    defo_stack: Array,
+    amplitudes: Array | None = None,
 ) -> np.ndarray:
     """Create noisy deformation samples given a covariance matrix and deformation stack.
 
@@ -259,12 +166,12 @@ def make_noisy_samples_jax(
     key : jax.random.KeyArray
         JAX pseudo random key.
         https://jax.readthedocs.io/en/latest/_autosummary/jax.random.key.htm
-    C : ArrayLike,
+    C : Array,
         Covariance matrix of shape (num_time, num_time) , or you can pass
         on matrix per pixel as shape (rows, cols, num_time, num_time).
-    defo_stack : ArrayLike,
+    defo_stack : Array,
         Deformation stack of shape (num_time, rows, cols).
-    amplitudes: 2D ArrayLike, optional
+    amplitudes: 2D Array, optional
         If provided, set the amplitudes of the output pixels.
         Default is to use all ones.
 
