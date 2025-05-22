@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 import h5py

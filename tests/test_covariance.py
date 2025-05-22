@@ -26,12 +26,7 @@ def generate_coh_array():
 
 @pytest.mark.parametrize("num_looks", [1, 2])
 def test_compute_crlb_batch_matches_single(num_looks):
-    """Test that the batch version of CRLB calculation matches the single matrix version.
-
-    For each pixel in the batch, the test computes the lower bound standard deviation using
-    the single matrix function and compares it with the corresponding element from the batch
-    computation.
-    """
+    """Test that the batch version of CRLB calculation matches the single version."""
     C_arrays = generate_coh_array()
 
     # Compute batch CRLB standard deviations from the batch function
@@ -43,5 +38,8 @@ def test_compute_crlb_batch_matches_single(num_looks):
         for j in range(cols):
             single_crlb = compute_lower_bound_std(C_arrays[i, j], num_looks)
             # Use a tolerance for floating point comparisons
-            errmsg = f"Mismatch at pixel ({i},{j}): single {single_crlb} vs batch {batch_result[:, i, j]}"
+            errmsg = (
+                f"Mismatch at pixel ({i},{j}): single {single_crlb} vs batch"
+                f" {batch_result[:, i, j]}"
+            )
             assert np.allclose(single_crlb, batch_result[:, i, j], atol=1e-6), errmsg

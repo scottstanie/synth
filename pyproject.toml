@@ -96,6 +96,7 @@ ignore = [
   "D213",   # Multi-line docstring summary should start at the second line
   "N803",   # Argument name should be lowercase
   "N806",   # Variable _ in function should be lowercase
+  "N815",   # Variable `seasonal_A` in class scope should not be mixedCase
   "PIE796", # Non-unique values are redundant and likely a mistake.
   "PLR",    # Pylint Refactor
   "PTH123", # `open()` should be replaced by `Path.open()`

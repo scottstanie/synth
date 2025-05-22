@@ -23,6 +23,7 @@ repos:
     rev: "24.4.2"
     hooks:
       - id: black
+        args: [--preview, --enable-unstable-feature, string_processing]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.5.0
