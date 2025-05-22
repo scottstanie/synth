@@ -2,22 +2,22 @@ name: synth-env
 channels:
   - conda-forge
 dependencies:
-  - python>=3.9
-  - pip>=21.3  # https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/#editable-installation
-  - git  # for pip install, due to setuptools_scm
+  - python>=3.11
+  - pip>=21.3
+  - git
   - gdal[version='>=3.9']
   - rasterio
   - h5py
-  - hdf5plugin
   - jax
-  - jupyter           # For Jupyter UI only
-  - ipywidgets        # For Jupyter UI only
-  - ipyleaflet        # For Jupyter UI only
-  - matplotlib-base   # For Jupyter UI only
   - numpy
   - pydantic
-  - pydantic-settings
   - scipy
   - tqdm
+  # For Jupyter UI
+  - jupyter
+  - ipywidgets
+  - ipyleaflet
+  - matplotlib-base
+  - cmcrameri
   - pip:
     - troposim

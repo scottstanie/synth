@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 
 import h5py
-import hdf5plugin
 import numpy as np
 import rasterio
 import rasterio as rio
@@ -23,12 +22,7 @@ from .utils import _setup_logging, load_current_phase, round_mantissa
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
-HDF5_KWARGS: dict[str, tuple | str] = {
-    "chunks": (5, 256, 256),
-    "compression": hdf5plugin.Blosc2(
-        cname="blosclz", clevel=6, filters=hdf5plugin.Blosc2.SHUFFLE
-    ),
-}
+HDF5_KWARGS: dict[str, tuple | str] = {"chunks": (5, 256, 256), "compression": "lzw"}
 
 logger = logging.getLogger("synth")
 
