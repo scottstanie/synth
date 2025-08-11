@@ -59,7 +59,7 @@ platforms = ["osx-arm64", "linux-64"]
 synth-insar = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
-python = ">=3.11"
+python = ">=3.11,<3.14"
 pip = ">=21.3"
 git = "*"
 rasterio = ">=1.4.3,<2"
@@ -159,7 +159,7 @@ ignore = [
 "**/__init__.py" = ["F403"]
 "tests/**" = ["D", "N", "PTH"]
 "notebooks/**" = ["D", "E501", "F821", "ARG001", "PLW0603"]
-"*.py" = ["D417"]  # Missing argument descriptions in docstrings
+"*.py" = ["D417"]                                           # Missing argument descriptions in docstrings
 
 [tool.ruff.lint.flake8-unused-arguments]
 # Whether to allow unused variadic arguments, like *args and **kwargs.
@@ -173,5 +173,5 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 doctest_optionflags = "NORMALIZE_WHITESPACE NUMBER"
-addopts = " --doctest-modules  --ignore=docs "
+addopts = " --ignore=docs "
 filterwarnings = ["error"]

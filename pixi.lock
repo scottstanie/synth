@@ -7228,8 +7228,8 @@ packages:
   timestamp: 1733569565672
 - pypi: ./
   name: synth-insar
-  version: 0.0.post1.dev64+g42854e7ee
-  sha256: e038a0a0356b265adf4327c895f8a5dff0b3fa63699478edd20d48c1f9c9b136
+  version: 0.0.post1.dev65+g79071c0a5.d20250811
+  sha256: 05c6cf6945bb2a0784751a12cbe2f7a25ba31bca981b116ddc049def2f3eb6d5
   requires_dist:
   - troposim>=0.2.0
   - rasterio>=1.4.3,<2

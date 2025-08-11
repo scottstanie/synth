@@ -4,6 +4,7 @@ from typing import Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import rasterio as rio
 
 from ._utils import get_dates
 
@@ -49,18 +50,18 @@ def process_coherence_data(
     The returned DataFrame has one row per pixel.
 
     """
-    from dolphin import io
-
     main_dir = Path(directory)
     diff_dir = main_dir / difference_dir
 
     # Read data
-    reader = io.RasterStackReader.from_file_list(sorted(diff_dir.glob("*tif")))
-    temp_coh = io.load_gdal(
+    # reader = io.RasterStackReader.from_file_list(sorted(diff_dir.glob("*tif")))
+    file_list = sorted(diff_dir.glob("*tif"))
+
+    temp_coh = _load_gdal(
         main_dir / "interferograms/temporal_coherence.tif", subsample_factor=subsample
     )
-    # sim = io.load_gdal(main_dir / "interferograms/similarity.tif")
-    # sim = io.load_gdal(next(sorted(Path(main_dir / "linked_phase")
+    # sim = _load_gdal(main_dir / "interferograms/similarity.tif")
+    # sim = _load_gdal(next(sorted(Path(main_dir / "linked_phase")
     #                                .rglob("similarity_*.tif"))))
     # AVERAGE sim... since this is average temp coh?
     # Or should i just do a single one...
@@ -70,13 +71,17 @@ def process_coherence_data(
     else:
         pl_dir = Path(main_dir / "phase_linking/linked_phase")
         sim_f = sorted(pl_dir.rglob("similarity_*.tif"))[0]
-    sim = io.load_gdal(
+    sim = _load_gdal(
         sim_f,
         subsample_factor=subsample,
     )
 
     # Process differences
-    pixels = reader[:, ::subsample, ::subsample].reshape(reader.shape[0], -1)
+    pixels = np.stack(
+        [_load_gdal(f, subsample_factor=subsample) for f in file_list], axis=0
+    )
+    pixels = pixels.reshape(pixels.shape[0], -1)
+
     if not by_date:
         rmse_by_pixel = np.sqrt(np.mean(pixels * pixels.conj(), axis=0))
         return pd.DataFrame(
@@ -90,7 +95,7 @@ def process_coherence_data(
         # Save the rmse by pixel for each date
         rmse_by_by_date = np.sqrt(np.mean(pixels * pixels.conj(), axis=1))
 
-        date_pairs = [Path(p).stem for p in reader.file_list]
+        date_pairs = [Path(p).stem for p in file_list]
         dates = [get_dates(f)[1] for f in date_pairs]
         return pd.DataFrame(
             {
@@ -342,9 +347,20 @@ def plot_boxplot(
     return fig, ax
 
 
-def plot_differences(directories):  # noqa: D103
-    from dolphin import io
+def _load_gdal(filename: Path | str, subsample_factor: int = 1) -> np.ndarray:
+    with rio.open(filename) as src:
+        data = src.read(
+            1,
+            out_shape=(
+                1,
+                src.height // subsample_factor,
+                src.width // subsample_factor,
+            ),
+        )
+    return data
 
+
+def plot_differences(directories):  # noqa: D103
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 8))
     colors = plt.cm.rainbow(np.linspace(0, 1, len(directories)))
 
@@ -357,14 +373,14 @@ def plot_differences(directories):  # noqa: D103
         diff_dir = main_dir / "differences"
 
         # Read data
-        reader = io.RasterStackReader.from_file_list(sorted(diff_dir.glob("*tif")))
-        dates = [get_dates(f)[1] for f in reader.file_list]
-        temp_coh = io.load_gdal(main_dir / "interferograms/temporal_coherence.tif")
-        sim = io.load_gdal(main_dir / "interferograms/similarity.tif")
+        file_list = sorted(diff_dir.glob("*tif"))
+        dates = [get_dates(f)[1] for f in file_list]
+        temp_coh = _load_gdal(main_dir / "interferograms/temporal_coherence.tif")
+        sim = _load_gdal(main_dir / "interferograms/similarity.tif")
 
-        # Process data
         # TODO: process in patches?
-        pixels = reader[:, :, :].reshape(reader.shape[0], -1)
+        pixels = np.stack([_load_gdal(f) for f in file_list], axis=0)
+        pixels = pixels.reshape(pixels.shape[0], -1)
 
         # Calculate product
         # cur_pixel_diffs = np.angle(np.exp(1j * (pixels - p0[:, None])))
