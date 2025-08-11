@@ -14,9 +14,12 @@ def generate_coh_array():
     num_matrices = 12
     # Generate list of coherence matrices with gamma_inf=0 and varying Tau0
     Cs = simulate_coh_stack(
-        time=np.arange(5), gamma0=0.6, gamma_inf=0, Tau0=10 * np.arange(num_matrices)
+        time=np.arange(5),
+        gamma0=0.6,
+        gamma_inf=0,
+        Tau0=10 * np.arange(1, 1 + num_matrices),
     )
-    return Cs
+    return Cs.reshape(3, 4, 5, 5)
 
 
 @pytest.mark.parametrize("num_looks", [1, 2])
