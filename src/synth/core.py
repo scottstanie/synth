@@ -71,8 +71,8 @@ def create_simulation_data(
     if inps.include_decorrelation and using_global_coh:
         logger.info("Getting Rhos, Tau rasters")
         # The global coherence is at 90 meters:
-        upsample_y = int(round(90 / inps.res_y))
-        upsample_x = int(round(90 / inps.res_x))
+        upsample_y = round(90 / inps.res_y)
+        upsample_x = round(90 / inps.res_x)
         upsample = (upsample_y, upsample_x)
         logger.info(f"Upsampling by {upsample}")
         coherence_files = global_coherence.get_coherence_model_coeffs(
@@ -227,17 +227,21 @@ def create_simulation_data(
         )
 
         window = rasterio.windows.Window.from_slices(rows, cols)
-        for filename, layer in zip(output_slc_filenames, noisy_stack):
+        for filename, layer in zip(output_slc_filenames, noisy_stack, strict=False):
             with rio.open(filename, "r+", **profile) as dst:
                 dst.write(layer, 1, window=window)
 
         if using_global_coh:
-            for filename, layer in zip(output_crlb_filenames, crlb_std_devs):
+            for filename, layer in zip(
+                output_crlb_filenames, crlb_std_devs, strict=False
+            ):
                 with rio.open(filename, "r+", **slc_profile) as dst:
                     dst.write(layer, 1, window=window)
 
         if inps.include_summed_truth:
-            for filename, layer in zip(truth_filenames, propagation_phase[1:]):
+            for filename, layer in zip(
+                truth_filenames, propagation_phase[1:], strict=False
+            ):
                 with rio.open(filename, "r+", **truth_profile) as dst:
                     # Sign convention for `phi = -4pi * r` flips this:
                     phase_diff = -1 * (layer - propagation_phase[0])

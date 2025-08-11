@@ -243,7 +243,9 @@ def fit_model(
         ax.plot(T_fit, gamma_fit, "r-", label="Fitted model")
         ax.set_xlabel("Temporal baseline (T)")
         ax.set_ylabel("Coherence (gamma)")
-        title_parts = [f"{name} = {p:.2f}" for p, name in zip(popt, param_names)]
+        title_parts = [
+            f"{name} = {p:.2f}" for p, name in zip(popt, param_names, strict=False)
+        ]
         title = r"$" + r",\;".join(title_parts) + r"$"
         ax.set_title(title)
         ax.legend()

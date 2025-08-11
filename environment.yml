@@ -5,7 +5,6 @@ dependencies:
   - python>=3.11
   - pip>=21.3
   - git
-  - gdal[version='>=3.9']
   - rasterio
   - h5py
   - jax

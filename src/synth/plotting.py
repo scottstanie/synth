@@ -4,8 +4,8 @@ from typing import Literal
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from matplotlib.colors import LogNorm
-from opera_utils import get_dates
+
+from ._utils import get_dates
 
 
 def process_coherence_data(
@@ -115,6 +115,14 @@ def plot_coherence_analysis(
     ----------
     df : pd.DataFrame
         DataFrame with columns col and "rmse"
+    col : Literal["temporal_coherence", "similarity"]
+        Column to plot
+    xlim : tuple[float | None, float | None] | None, optional
+        X-axis limits, by default (0, 1)
+    ax : plt.Axes | None, optional
+        Axes object to plot on, by default None
+    add_colorbar : bool, optional
+        Whether to add a colorbar, by default False
 
     Returns
     -------
@@ -177,6 +185,16 @@ def plot_quality_density(
         DataFrame with columns 'temporal_coherence' and 'rmse'
     bins : int, optional
         Number of bins for the 2D histogram, by default 100
+    col : Literal["temporal_coherence", "similarity"]
+        Column to plot
+    y_col : Literal["rmse", "temporal_coherence", "similarity"]
+        Column to plot
+    ax : plt.Axes | None, optional
+        Axes object to plot on, by default None
+    cmap : str, optional
+        Colormap to use, by default "blues"
+    add_colorbar : bool, optional
+        Whether to add a colorbar, by default False
 
     Returns
     -------
@@ -184,6 +202,8 @@ def plot_quality_density(
         Figure and axes objects
 
     """
+    from matplotlib.colors import LogNorm
+
     label = " ".join(col.split("_")).title()
     ylabel = y_col.upper() if y_col == "rmse" else " ".join(y_col.split("_")).title()
     # Filter out problematic values
@@ -228,27 +248,26 @@ def plot_quality_density(
 
 def plot_boxplot(
     df: pd.DataFrame,
-    bins: int = 100,
     min_coherence: float = 0.01,
     min_rmse: float = 1e-6,
     ax: plt.Axes | None = None,
-) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
+) -> tuple[plt.Figure, plt.Axes]:
     """Create a boxplot showing temporal coherence bins vs RMSE.
 
     Parameters
     ----------
     df : pd.DataFrame
         DataFrame with columns 'temporal_coherence' and 'rmse'
-    bins : int, optional
-        Number of bins for the 2D histogram, by default 100
     min_coherence : float, optional
         Minimum coherence value to include, by default 0.01
     min_rmse : float, optional
         Minimum RMSE value to include, by default 1e-6
+    ax : plt.Axes | None, optional
+        Axes object to plot on, by default None
 
     Returns
     -------
-    tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]
+    tuple[plt.Figure, plt.Axes]
         Figure and axes objects
 
     """
@@ -322,7 +341,7 @@ def plot_boxplot(
     return fig, ax
 
 
-def plot_differences(directories):
+def plot_differences(directories):  # noqa: D103
     from dolphin import io
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 8))
@@ -331,7 +350,7 @@ def plot_differences(directories):
     diffs = []
     errors = []
     dfs = []
-    for directory, color in zip(directories, colors):
+    for directory, color in zip(directories, colors, strict=False):
         # Set up paths
         main_dir = Path(directory)
         diff_dir = main_dir / "differences"
@@ -390,7 +409,7 @@ def rmse(arr, axis=1):
 
 
 def plot_temporal_coherence_vs_rmse(df):
-    """Create a comprehensive visualization of temporal coherence versus RMSE relationships.
+    """Visualize temporal coherence versus RMSE relationships.
 
     Parameters
     ----------

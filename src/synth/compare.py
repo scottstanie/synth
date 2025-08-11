@@ -2,7 +2,6 @@ import argparse
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import rasterio as rio
@@ -33,9 +32,9 @@ def compare_phase(
     output_dir: Path = Path("differences"),
     is_wrapped: bool = False,
     flip_sign: bool = False,
-    temporal_coherence_file: Optional[PathOrStr] = None,
+    temporal_coherence_file: PathOrStr | None = None,
     temporal_coherence_threshold: float = 0.7,
-    conncomp_files: Optional[Iterable[PathOrStr]] = None,
+    conncomp_files: Iterable[PathOrStr] | None = None,
     exclude_zero_conncomps: bool = True,
     block_shape: tuple[int, int] = BLOCK_SHAPE,
 ) -> list[Path]:
@@ -189,8 +188,8 @@ def _get_downsample_factor(downsampled_shape, full_res_file):
     with rio.open(full_res_file) as src:
         full_shape = src.shape
 
-    row_strides = int(round(full_shape[-2] / downsampled_shape[0]))
-    col_strides = int(round(full_shape[-1] / downsampled_shape[1]))
+    row_strides = round(full_shape[-2] / downsampled_shape[0])
+    col_strides = round(full_shape[-1] / downsampled_shape[1])
     return row_strides, col_strides
 
 
