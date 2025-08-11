@@ -22,7 +22,7 @@ from .utils import _setup_logging, load_current_phase, round_mantissa
 
 SENTINEL_WAVELENGTH = 0.055465763  # meters
 METERS_TO_PHASE = 4 * 3.14159 / SENTINEL_WAVELENGTH
-HDF5_KWARGS: dict[str, tuple | str] = {"chunks": (5, 256, 256), "compression": "lzw"}
+HDF5_KWARGS: dict[str, tuple | str] = {"chunks": (5, 256, 256), "compression": "lzf"}
 
 logger = logging.getLogger("synth")
 
