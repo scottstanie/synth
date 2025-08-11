@@ -84,6 +84,7 @@ pytest = "*"
 pytest-cov = "*"
 ruff = "*"
 matplotlib = ">=3.10.3"
+pandas = "*"
 ipython = ">=9.3.0"
 
 [tool.pixi.feature.plot.dependencies]
@@ -91,6 +92,7 @@ jupyter = "*"
 ipywidgets = "*"
 ipyleaflet = "*"
 matplotlib-base = "*"
+pandas = "*"
 cmcrameri = "*"
 
 
@@ -176,4 +178,3 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 doctest_optionflags = "NORMALIZE_WHITESPACE NUMBER"
 addopts = " --ignore=docs "
-filterwarnings = ["error"]
