@@ -125,7 +125,7 @@ def compute_lower_bound_std(
     return np.concatenate(([0], estimator_stddev))
 
 
-def _theta_X_theta_T(X: Array, ref: int) -> Array:  # noqa: N802
+def _theta_X_theta_T(X: Array, ref: int) -> Array:
     """Project an (N,N) FIM to (N-1,N-1) by deleting `ref` row/col.
 
     Equivalent to the matmul:
@@ -138,7 +138,7 @@ def _theta_X_theta_T(X: Array, ref: int) -> Array:  # noqa: N802
 
 
 def _theta_indices(n: int, ref: int) -> Array:
-    """Indices that keep all rows/cols except `ref`."""
+    """Get indices that keep all rows/cols except `ref`."""
     return jnp.concatenate([jnp.arange(ref), jnp.arange(ref + 1, n)])
 
 
@@ -146,6 +146,7 @@ def build_fisher_from_abs_gamma(
     abs_G: Array, abs_G_inv: Array, num_looks: float
 ) -> Array:
     """Build Fisher information X = 2L (|Γ| ∘ |Γ|⁻¹ - I) from precomputed |Γ| and |Γ|⁻¹.
+
     Shapes: abs_G, abs_G_inv : (..., N, N)  -> X : (..., N, N).
     """
     eyeN = jnp.eye(abs_G.shape[-1], dtype=abs_G.dtype)
@@ -295,9 +296,9 @@ def _crlb_from_X(
 def _examples(N=10, gamma0=0.6, rho=0.8):
     """Make example covariance matrices used in Tebaldini, 2010."""
     idxs = np.abs(np.arange(N).reshape(-1, 1) - np.arange(N).reshape(1, -1))
-    # {Γ}nm = ρ^|n−m|; ρ = 0.8  # noqa: RUF003
+    # {Γ}nm = ρ^|n−m|; ρ = 0.8
     C_ar1 = rho**idxs
-    # {Γ}nm = γ0 + (1 - γ0) δ{n-m};  # noqa: RUF003
+    # {Γ}nm = γ0 + (1 - γ0) δ{n-m};
     C_const_gamma = (1 - gamma0) * np.eye(N) + gamma0 * np.ones((N, N))
     return C_ar1, C_const_gamma
 

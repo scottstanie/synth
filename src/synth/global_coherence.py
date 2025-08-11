@@ -18,7 +18,8 @@ COHERENCE_GPKG_ZIP = Path(__file__).parent / "data/global_coherence_layers.gti.g
 COHERENCE_GDAL_PATH = f"/vsizip/{COHERENCE_GPKG_ZIP}/global_coherence_layers.gti.gpkg"
 COHERENCE_GPKG_TEMPLATE = "/vsizip/" + str(
     Path(__file__).parent
-    / "data/coherence_{season}_{variable}.gti.gpkg.zip/coherence_{season}_{variable}.gti.gpkg"
+    / "data/coherence_{season}_{variable}.gti.gpkg.zip"
+    / "coherence_{season}_{variable}.gti.gpkg"
 )
 
 
@@ -28,7 +29,7 @@ def convert_to_float(X: np.ndarray, variable: Variable) -> np.ndarray:
     Notes
     -----
     Backscatter amplitudes (AMP.tif files):
-        γ0[dB]=20∗log10(DN)−83
+        γ0[dB]=20*log10(DN)-83
         γ0[power]=DN2/199526231
 
         No data value 0
@@ -177,6 +178,8 @@ def model_2param(t: np.ndarray, rho_inf: float, tau: float, *args) -> np.ndarray
         Asymptotic coherence value.
     tau : float
         Coherence decay time constant.
+    *args
+        Additional unused arguments for compatibility.
 
     Returns
     -------
@@ -259,6 +262,8 @@ def fetch_rho_tau_amp(
     output_dir=Path(),
     max_workers: int = 4,
 ):
+    """Fetch rho, tau, and amplitude data for given bounds."""
+
     def fetch_single(variable, season) -> Path:
         outfile = output_dir / f"{variable}_{season}.tif"
         get_rasters(
@@ -312,6 +317,7 @@ def get_coherence_model_coeffs(
     output_dir: Path = Path(),
     max_workers: int = 4,
 ):
+    """Get coherence model coefficients for given bounds."""
     # rho_stack, tau_stack, amp_stack, profile = fetch_rho_tau_amp(
     rho_files, tau_files, amp_files = fetch_rho_tau_amp(
         bounds=bounds,
@@ -364,6 +370,8 @@ def get_coherence_model_coeffs(
 def save_coherence_data(
     outfile, amps, rhos, taus, seasonal_A, seasonal_B, seasonal_mask, profile
 ):
+    """Save coherence data to HDF5 file."""
+    _ = profile  # Currently unused
     import h5py
 
     assert rhos.ndim == 2
@@ -448,7 +456,8 @@ def calculate_seasonal_coeffs_files(
     amp_mean_out = amp_files[0].parent / "amp_mean.tif"
     cmd = (
         f"{base_cmd} -A"
-        f" {' '.join(map(str, amp_files))} --outfile={amp_mean_out} --calc='numpy.mean(A,axis=0)'"
+        f" {' '.join(map(str, amp_files))} --outfile={amp_mean_out}"
+        " --calc='numpy.mean(A,axis=0)'"
     )
     if not amp_mean_out.exists():
         _log_and_run(cmd)
@@ -529,7 +538,8 @@ def calculate_seasonal_coeffs_files(
     tau_mean_out = a.parent / "tau_mean.tif"
     cmd = (
         f"{base_cmd} -A"
-        f" {' '.join(map(str, tau_files))} --outfile={tau_mean_out} --calc='numpy.mean(A,axis=0)'"
+        f" {' '.join(map(str, tau_files))} --outfile={tau_mean_out}"
+        " --calc='numpy.mean(A,axis=0)'"
     )
     if not tau_mean_out.exists():
         _log_and_run(cmd)
@@ -554,7 +564,7 @@ def calculate_seasonal_coeffs_files(
     )
 
 
-def rho_to_AB(rho_inf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:  # noqa: N802
+def rho_to_AB(rho_inf: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Convert long-term coherence value to seasonal A and B parameters."""
     A = 0.5 * (1 + np.sqrt(rho_inf))
     B = 0.5 * (1 - np.sqrt(rho_inf))

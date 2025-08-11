@@ -140,6 +140,7 @@ ignore = [
   "D105",   # Missing docstring in magic method
   "D203",   # 1 blank line required before class docstring
   "D213",   # Multi-line docstring summary should start at the second line
+  "N802",   # Function name should be lowercase
   "N803",   # Argument name should be lowercase
   "N806",   # Variable _ in function should be lowercase
   "N815",   # Variable `seasonal_A` in class scope should not be mixedCase
@@ -148,6 +149,8 @@ ignore = [
   "PTH123", # `open()` should be replaced by `Path.open()`
   "PTH207", # "Replace `glob` with `Path.glob` or `Path.rglob`
   "ISC001", # The following rules may cause conflicts when used with the formatter
+  "RUF002", # Docstring contains ambiguous unicode characters (preserve Greek letters)
+  "RUF003", # Comment contains ambiguous unicode characters (preserve Greek letters)
   "TRY003", # Avoid specifying long messages outside the exception
 ]
 
@@ -155,6 +158,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F403"]
 "tests/**" = ["D", "N", "PTH"]
+"notebooks/**" = ["D", "E501", "F821", "ARG001", "PLW0603"]
+"*.py" = ["D417"]  # Missing argument descriptions in docstrings
 
 [tool.ruff.lint.flake8-unused-arguments]
 # Whether to allow unused variadic arguments, like *args and **kwargs.

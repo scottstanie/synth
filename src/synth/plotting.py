@@ -60,7 +60,8 @@ def process_coherence_data(
         main_dir / "interferograms/temporal_coherence.tif", subsample_factor=subsample
     )
     # sim = io.load_gdal(main_dir / "interferograms/similarity.tif")
-    # sim = io.load_gdal(next(sorted(Path(main_dir / "linked_phase".rglob("similarity_*.tif")))))
+    # sim = io.load_gdal(next(sorted(Path(main_dir / "linked_phase")
+    #                                .rglob("similarity_*.tif"))))
     # AVERAGE sim... since this is average temp coh?
     # Or should i just do a single one...
     # print(sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif")))
