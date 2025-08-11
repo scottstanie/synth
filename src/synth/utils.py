@@ -9,8 +9,8 @@ from pathlib import Path
 import h5py
 import jax.numpy as jnp
 import numpy as np
-from jax import jit, lax
-from jax.typing import Array
+from jax import Array, jit, lax
+from jax.typing import ArrayLike
 
 from ._types import P, PathOrStr, T
 
@@ -168,12 +168,14 @@ class DummyProcessPoolExecutor(Executor):
 
 
 @partial(jit, static_argnums=(1, 2, 3))
-def take_looks(image: Array, row_looks: int, col_looks: int, average: bool = True):
+def take_looks(
+    image: ArrayLike, row_looks: int, col_looks: int, average: bool = True
+) -> Array:
     """Downsample a numpy matrix by summing blocks of (row_looks, col_looks).
 
     Parameters
     ----------
-    image : Array
+    image : ArrayLike
         2D array of an image
     row_looks : int
         the reduction rate in row direction
@@ -194,7 +196,7 @@ def take_looks(image: Array, row_looks: int, col_looks: int, average: bool = Tru
     """
     # Ensure the image has a channel/batch dimension (assuming grayscale image)
     # Add a (batch, ..., channel) dimensions to make NHWC
-    image = image[jnp.newaxis, ..., jnp.newaxis]
+    image = jnp.array(image)[jnp.newaxis, ..., jnp.newaxis]
 
     # Create a kernel filled with ones
     # Kernel shape: HWIO (height, width, input_channels, output_channels)
