@@ -1,4 +1,11 @@
+from __future__ import annotations
+
+from functools import partial
+
+import jax.numpy as jnp
 import numpy as np
+from jax import Array, jit
+from jax.scipy.linalg import solve
 from numpy.linalg import inv
 from numpy.typing import ArrayLike
 
@@ -56,7 +63,7 @@ def compute_crlb(
         variance lower bound at each date.
 
     """  # noqa: E501
-    N = coherence_matrix.shape[0]
+    N = np.asarray(coherence_matrix).shape[0]
 
     # For direct phase estimation, Theta should be (N x (N-1))
     # This maps N-1 phase differences to N phases
@@ -76,8 +83,9 @@ def compute_crlb(
         # Add APS contribution
         R_aps_inv = np.eye(N) / aps_variance
         # Otherwise, use full hybrid version, equation (22)
-        fim = Theta.T @ (X + R_aps_inv) @ Theta
-        inv_fim = inv(fim - Theta.T @ X @ inv(X + R_aps_inv) @ X @ Theta)
+        A = Theta.T @ X @ inv(X + R_aps_inv) @ X @ Theta
+        fim = Theta.T @ X @ Theta - A
+        inv_fim = inv(fim)
 
     return inv_fim
 
@@ -117,11 +125,179 @@ def compute_lower_bound_std(
     return np.concatenate(([0], estimator_stddev))
 
 
+def _theta_X_theta_T(X: Array, ref: int) -> Array:
+    """Project an (N,N) FIM to (N-1,N-1) by deleting `ref` row/col.
+
+    Equivalent to the matmul:
+        Theta.T @ X @ Theta
+
+    where Theta is the (N,N-1) matrix with the row `ref` zero and the rest identity.
+    """
+    idx = _theta_indices(X.shape[-1], ref)
+    return X[..., idx[:, None], idx]
+
+
+def _theta_indices(n: int, ref: int) -> Array:
+    """Get indices that keep all rows/cols except `ref`."""
+    return jnp.concatenate([jnp.arange(ref), jnp.arange(ref + 1, n)])
+
+
+def build_fisher_from_abs_gamma(
+    abs_G: Array, abs_G_inv: Array, num_looks: float
+) -> Array:
+    """Build Fisher information X = 2L (|Γ| ∘ |Γ|⁻¹ - I) from precomputed |Γ| and |Γ|⁻¹.
+
+    Shapes: abs_G, abs_G_inv : (..., N, N)  -> X : (..., N, N).
+    """
+    eyeN = jnp.eye(abs_G.shape[-1], dtype=abs_G.dtype)
+    eyeN = jnp.broadcast_to(eyeN, abs_G.shape)
+    return 2.0 * num_looks * (abs_G * abs_G_inv - eyeN)
+
+
+@partial(jit, static_argnums=(1, 2, 3, 4))
+def compute_crlb_jax(
+    coherence_matrices: Array,
+    num_looks: int,
+    reference_idx: int,
+    aps_variance: float = 1e-2,
+    jitter: float = 1e-4,
+) -> Array:
+    """Batched CRLB std-dev (per epoch) for a stack of Fisher Information Matrices.
+
+    See Tebaldini 2010, eqs. 21-22).
+
+    Parameters
+    ----------
+    coherence_matrices : Array
+        Complex Γ with shape (..., N, N).  Leading dimensions are batched.
+    num_looks : int
+        Number of independent looks, `L`.
+        Note that too-large `L` will lead to numerical instability.
+    reference_idx : int
+        Index of the reference epoch.
+        Must be in the range [0, N-1].
+    aps_variance : float
+        Variance of the APS.
+        Set to 0 to ignore APS contribution.
+        Default is 1e-2.
+    jitter : float
+        Diagonal fudge added to each SPD solve for extra robustness.
+        Default is 1e-4.
+
+    Returns
+    -------
+    Array
+        Standard-deviation lower bounds with shape (..., N) in radians.
+        Element 0 (reference epoch) is fixed to 0.
+
+    """
+    *batch, N, _ = coherence_matrices.shape
+    eye_N = jnp.eye(N, dtype=coherence_matrices.dtype)
+    eye_N1 = jnp.eye(N - 1, dtype=coherence_matrices.dtype)
+
+    # Fisher information X
+    #    X = 2/L * (|Γ| ∘ |Γ|⁻¹ - I)
+    abs_G = jnp.abs(coherence_matrices)
+    eyeN_batch = jnp.broadcast_to(eye_N, abs_G.shape)
+    abs_G = abs_G + jitter * eyeN_batch  # regularize to promote positive definiteness
+    abs_G_inv = solve(abs_G, eyeN_batch, assume_a="pos")
+
+    X = 2.0 * num_looks * (abs_G * abs_G_inv - eyeN_batch)  # Hadamard
+
+    # Decorrelation-only term  Θᵀ X Θ
+    F_base = _theta_X_theta_T(X, reference_idx)
+
+    # APS hybrid correction (eq. 22) if `aps_variance` != 0
+    #     A = Θᵀ X (X + R⁻¹)⁻¹ X Θ  ,  R⁻¹ = I/alpha
+    #     We compute (X + R⁻¹)⁻¹ (XΘ) via solve().
+    if aps_variance > 1e-6:
+        R_inv = eyeN_batch / aps_variance  # (...,N,N)
+        X_plus_R = X + R_inv + jitter * eyeN_batch  # SPD + εI
+        X_plus_R_inv = solve(X_plus_R, eyeN_batch, assume_a="pos")
+        A = _theta_X_theta_T(X @ X_plus_R_inv @ X, reference_idx)
+        FIM = F_base - A
+    else:
+        FIM = F_base
+
+    # Invert FIM via solve();   Σ = FIM⁻¹
+    FIM = FIM + jitter * jnp.broadcast_to(eye_N1, FIM.shape)
+    Sigma = solve(FIM, jnp.broadcast_to(eye_N1, FIM.shape), assume_a="pos")
+
+    sig = jnp.sqrt(jnp.diagonal(Sigma, axis1=-2, axis2=-1))  # (...,N-1)
+    # insert 0 for reference epoch
+    sig = jnp.concatenate([jnp.zeros((*batch, 1), dtype=sig.dtype), sig], axis=-1)
+    return sig
+
+
+@partial(jit, static_argnums=(1, 2, 3))
+def _crlb_from_X(
+    X: Array,
+    reference_idx: int,
+    aps_variance: float = 1e-2,
+    jitter: float = 1e-6,
+) -> Array:
+    """Find CRLB standard deviation from a prebuilt Fisher matrix X.
+
+    Parameters
+    ----------
+    X : Array
+        Fisher matrices, shape (..., N, N)
+    reference_idx : int
+        Reference epoch index (its σ=0 in the output)
+    aps_variance : float
+        APS variance; if 0, APS term is skipped
+    jitter : float
+        Jitter added to SPD solves
+
+    Returns
+    -------
+    Array
+        σ with shape (..., N)
+
+    """
+    *batch, N, _ = X.shape
+    idx = _theta_indices(N, reference_idx)
+
+    eyeN = jnp.eye(N, dtype=X.dtype)
+    eyeN1 = jnp.eye(N - 1, dtype=X.dtype)
+    eyeN = jnp.broadcast_to(eyeN, X.shape)
+    eyeN1 = jnp.broadcast_to(eyeN1, (*batch, N - 1, N - 1))
+
+    # Decorrel.-only term F_base = Θᵀ X Θ  == select rows/cols by idx
+    F_base = X[..., idx[:, None], idx]  # (..., N-1, N-1)
+
+    if aps_variance > 0.0:
+        # A = Θᵀ X (X + R⁻¹)⁻¹ X Θ
+        R_inv = eyeN / aps_variance
+        X_plus_R = X + R_inv + jitter * eyeN  # SPD + εI
+
+        # Compute (X + R⁻¹)⁻¹ (X Θ) via solve, but Θ just selects columns `idx`
+        X_cols = X[..., :, idx]  # (..., N, N-1)
+        AXTheta = solve(X_plus_R, X_cols, assume_a="pos")  # (..., N, N-1)
+
+        # Θᵀ (X @ AXTheta) is just selecting rows `idx`
+        XB = jnp.matmul(X, AXTheta)  # (..., N, N-1)
+        A = XB[..., idx, :]  # (..., N-1, N-1)
+
+        FIM = F_base - A
+    else:
+        FIM = F_base
+
+    # Σ = FIM⁻¹  via solve
+    FIM = FIM + jitter * eyeN1
+    Sigma = solve(FIM, eyeN1, assume_a="pos")
+
+    # σ = √diag(Σ), insert 0 for ref
+    sig = jnp.sqrt(jnp.diagonal(Sigma, axis1=-2, axis2=-1))  # (..., N-1)
+    sig = jnp.insert(sig, reference_idx, 0.0, axis=-1)  # (..., N)
+    return sig
+
+
 def _examples(N=10, gamma0=0.6, rho=0.8):
     """Make example covariance matrices used in Tebaldini, 2010."""
     idxs = np.abs(np.arange(N).reshape(-1, 1) - np.arange(N).reshape(1, -1))
-    # {Γ}nm = ρ^|n−m|; ρ = 0.8  # noqa: RUF003
+    # {Γ}nm = ρ^|n−m|; ρ = 0.8
     C_ar1 = rho**idxs
-    # {Γ}nm = γ0 + (1 - γ0) δ{n-m};  # noqa: RUF003
+    # {Γ}nm = γ0 + (1 - γ0) δ{n-m};
     C_const_gamma = (1 - gamma0) * np.eye(N) + gamma0 * np.ones((N, N))
     return C_ar1, C_const_gamma

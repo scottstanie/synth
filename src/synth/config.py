@@ -1,13 +1,12 @@
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import jax.numpy as jnp
 from jax import Array
 from numpy.typing import ArrayLike
 from pydantic import BaseModel, Field
-from pydantic_settings import SettingsConfigDict
 
 from ._types import Bbox, RhoOption
 
@@ -22,10 +21,10 @@ class CustomCoherence(BaseModel):
         ..., ge=0, description="Coherence decay time constant (in days)"
     )
     gamma0: float = Field(1.0, ge=0.0, le=1.0, description="Initial coherence value")
-    seasonal_A: Optional[float] = Field(
+    seasonal_A: float | None = Field(
         None, ge=0.0, le=1.0, description="Seasonal A coefficient"
     )
-    seasonal_B: Optional[float] = Field(
+    seasonal_B: float | None = Field(
         None, ge=0.0, le=1.0, description="Seasonal B coefficient"
     )
 
@@ -60,8 +59,6 @@ class CustomCoherence(BaseModel):
 
 class SimulationInputs(BaseModel):
     """Parameters describing simulation data to generate."""
-
-    model_config = SettingsConfigDict(cli_parse_args=True, cli_prog_name="synth")
 
     output_dir: Path = Field(
         default_factory=Path, description="Directory where output files will be saved."
@@ -149,7 +146,7 @@ class SimulationInputs(BaseModel):
             " Coherence dataset based on the area of interest."
         ),
     )
-    custom_covariance: Optional[CustomCoherence] = Field(
+    custom_covariance: CustomCoherence | None = Field(
         default=None,
         description=(
             "Custom covariance parameters to use if not using the global dataset."

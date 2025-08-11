@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 from os import PathLike
-from typing import TYPE_CHECKING, NamedTuple, ParamSpec, TypeVar, Union
+from typing import TYPE_CHECKING, NamedTuple, ParamSpec, TypeVar
 
 # Some classes are declared as generic in stubs, but not at runtime.
 # In Python 3.9 and earlier, os.PathLike is not subscriptable, results in runtime error
@@ -44,7 +44,7 @@ class Bbox(NamedTuple):
     top: float
 
 
-PathOrStr = Union[str, PathLikeStr]
+PathOrStr = str | PathLikeStr
 # TypeVar added for generic functions which should return the same type as the input
 PathLikeT = TypeVar("PathLikeT", str, PathLikeStr)
 

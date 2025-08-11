@@ -1,10 +1,7 @@
 import numpy as np
 import pytest
 
-# TODO: use synth's simulate_coh
-from dolphin.phase_link.simulate import simulate_coh
-
-from synth.covariance import compute_crlb_batch
+from synth.covariance import compute_crlb_batch, simulate_coh_stack
 from synth.crlb import compute_lower_bound_std
 
 
@@ -16,12 +13,13 @@ def generate_coh_array():
     """
     num_matrices = 12
     # Generate list of coherence matrices with gamma_inf=0 and varying Tau0
-    Cs = [
-        simulate_coh(5, gamma_inf=0, Tau0=10 * ii)[0]
-        for ii in range(1, num_matrices + 1)
-    ]
-    Cs_arr = np.array(Cs)
-    return Cs_arr.reshape(3, 4, 5, 5)
+    Cs = simulate_coh_stack(
+        time=np.arange(5),
+        gamma0=0.6,
+        gamma_inf=0,
+        Tau0=10 * np.arange(1, 1 + num_matrices),
+    )
+    return Cs.reshape(3, 4, 5, 5)
 
 
 @pytest.mark.parametrize("num_looks", [1, 2])

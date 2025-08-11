@@ -209,6 +209,7 @@ def make_noisy_samples_jax(
 def compute_crlb_batch(
     C_arrays: NDArray[np.complex64], num_looks: int, reference_idx: int = 0
 ) -> Array:
+    """Compute CRLB for batch of covariance matrices."""
     rows, cols, n, _ = C_arrays.shape
     Gamma = jnp.abs(C_arrays)
 
