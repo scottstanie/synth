@@ -78,5 +78,5 @@ def test_run(tmp_path):
     assert (
         "crlb_std_dev_radians" in df.columns
     ), "CRLB CSV should have 'crlb_std_dev_radians' column"
-    assert all(df["crlb_std_dev_radians"][0] == 0), "CRLB first value should be 0"
+    assert df["crlb_std_dev_radians"][0] == 0, "CRLB first value should be 0"
     assert all(df["crlb_std_dev_radians"][1:] > 0), "CRLB values should be positive"

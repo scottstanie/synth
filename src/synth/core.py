@@ -128,7 +128,7 @@ def create_simulation_data(
     output_slc_filenames = [
         output_slc_dir / f"{date.strftime('%Y%m%d')}.slc.tif" for date in time
     ]
-    slc_profile = profile.copy() | {"dtype": "complex64", "compression": "lzw"}
+    slc_profile = profile.copy() | {"dtype": "complex64"}
     for filename in output_slc_filenames:
         with rio.open(filename, "w", **slc_profile) as dst:
             pass
@@ -228,21 +228,21 @@ def create_simulation_data(
 
         window = rasterio.windows.Window.from_slices(rows, cols)
         for filename, layer in zip(output_slc_filenames, noisy_stack, strict=False):
-            with rio.open(filename, "r+", **profile) as dst:
+            with rio.open(filename, "r+") as dst:
                 dst.write(layer, 1, window=window)
 
         if using_global_coh:
             for filename, layer in zip(
                 output_crlb_filenames, crlb_std_devs, strict=False
             ):
-                with rio.open(filename, "r+", **slc_profile) as dst:
+                with rio.open(filename, "r+") as dst:
                     dst.write(layer, 1, window=window)
 
         if inps.include_summed_truth:
             for filename, layer in zip(
                 truth_filenames, propagation_phase[1:], strict=False
             ):
-                with rio.open(filename, "r+", **truth_profile) as dst:
+                with rio.open(filename, "r+") as dst:
                     # Sign convention for `phi = -4pi * r` flips this:
                     phase_diff = -1 * (layer - propagation_phase[0])
                     dst.write(phase_diff, 1, window=window)
