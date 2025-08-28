@@ -107,6 +107,12 @@ class SimulationInputs(BaseModel):
     max_defo_amplitude: float = Field(
         default=5, description="Maximum amplitude for deformation effects."
     )
+    defo_width_fraction: float = Field(
+        default=0.2,
+        description=(
+            "Fraction of the total image width that the deformation bowl spans."
+        ),
+    )
 
     include_ramps: bool = Field(
         default=True, description="Flag to include ramp effects in the simulation."

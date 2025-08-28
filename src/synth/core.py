@@ -110,7 +110,7 @@ def create_simulation_data(
         files["deformation"] = layers_dir / "deformation.h5"
         create_defo_stack(
             shape=shape3d,
-            sigma=shape2d[0] / 5,
+            sigma=shape2d[0] * inps.defo_width_fraction,
             max_amplitude=inps.max_defo_amplitude,
             out_hdf5=files["deformation"],
         )

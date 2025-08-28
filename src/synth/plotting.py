@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import rasterio as rio
 
-from ._utils import get_dates
+from .utils import get_dates
 
 
 def process_coherence_data(
@@ -14,6 +14,7 @@ def process_coherence_data(
     by_date: bool = False,
     subsample: int = 1,
     difference_dir: str | Path = "differences",
+    trim: int = 20,
 ) -> pd.DataFrame:
     """Process InSAR coherence data from a directory and return analysis dataframe.
 
@@ -23,8 +24,8 @@ def process_coherence_data(
         Path to the directory containing the InSAR data with the following structure:
         - directory/
             - differences/*.tif
-            - interferograms/temporal_coherence.tif
-            - interferograms/similarity.tif
+            - interferograms/temporal_coherence*.tif
+            - interferograms/similarity*.tif
     by_date : bool, optional
         If True, return a dataframe with one row per date, by default False
     subsample : int, optional
@@ -58,7 +59,12 @@ def process_coherence_data(
     file_list = sorted(diff_dir.glob("*tif"))
 
     temp_coh = _load_gdal(
-        main_dir / "interferograms/temporal_coherence.tif", subsample_factor=subsample
+        next(iter(main_dir.glob("interferograms/temporal_coherence_[0-9]*.tif"))),
+        subsample_factor=subsample,
+    )
+    sim = _load_gdal(
+        next(iter(main_dir.glob("interferograms/similarity_[0-9]*.tif"))),
+        subsample_factor=subsample,
     )
     # sim = _load_gdal(main_dir / "interferograms/similarity.tif")
     # sim = _load_gdal(next(sorted(Path(main_dir / "linked_phase")
@@ -66,20 +72,12 @@ def process_coherence_data(
     # AVERAGE sim... since this is average temp coh?
     # Or should i just do a single one...
     # print(sorted(Path(main_dir / "linked_phase").rglob("similarity_*.tif")))
-    if (pl_dir := Path(main_dir / "linked_phase")).exists():
-        sim_f = sorted(pl_dir.rglob("similarity_*.tif"))[0]
-    else:
-        pl_dir = Path(main_dir / "phase_linking/linked_phase")
-        sim_f = sorted(pl_dir.rglob("similarity_*.tif"))[0]
-    sim = _load_gdal(
-        sim_f,
-        subsample_factor=subsample,
-    )
 
     # Process differences
     pixels = np.stack(
         [_load_gdal(f, subsample_factor=subsample) for f in file_list], axis=0
     )
+    pixels = pixels[..., trim:-trim, trim:-trim]
     pixels = pixels.reshape(pixels.shape[0], -1)
 
     if not by_date:
